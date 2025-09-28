@@ -1,0 +1,10 @@
+[package]
+name = "ddd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { version = "1.0" }
+async-trait = { version = "0.1" }
+bon = { version = "3.7" }
+chrono = { version = "0.4" }

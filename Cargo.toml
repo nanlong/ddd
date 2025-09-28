@@ -1,0 +1,5 @@
+[workspace]
+members = ["ddd", "ddd-macros", "demo"]
+resolver = "3"
+
+[workspace.dependencies]
