@@ -12,7 +12,7 @@ where
     R: Repository<A>,
 {
     repo: R,
-    _marker: std::marker::PhantomData<A>,
+    _marker: PhantomData<A>,
 }
 
 impl<A, R> AggregateRoot<A, R>
