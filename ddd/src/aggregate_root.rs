@@ -1,6 +1,6 @@
 use crate::{
     aggregate::Aggregate,
-    domain_event::{EventEnvelope, Metadata},
+    event::{EventEnvelope, Metadata},
     repository::Repository,
 };
 use anyhow::Result;
@@ -29,7 +29,7 @@ where
 
     pub async fn execute(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         command: A::Command,
         metadata: Metadata,
     ) -> Result<Vec<EventEnvelope<A>>> {
@@ -46,7 +46,7 @@ where
         // 如果不存在则创建新的聚合实例
         let mut aggregate = match loaded {
             Some(aggregate) => aggregate,
-            None => A::new(aggregate_id),
+            None => A::new(aggregate_id.clone()),
         };
 
         // 执行命令

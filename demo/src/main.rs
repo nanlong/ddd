@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
+use ddd::event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
 use ddd::repository::Repository;
 use ddd_macros::{aggregate, event};
 use std::collections::HashMap;
@@ -76,9 +76,9 @@ impl Aggregate for Account {
     type Event = AccountEvent;
     type Error = AccountError;
 
-    fn new(aggregate_id: &str) -> Self {
+    fn new(aggregate_id: Self::Id) -> Self {
         Self {
-            id: aggregate_id.to_string(),
+            id: aggregate_id,
             version: 0,
             balance: 0,
         }
@@ -168,7 +168,7 @@ struct InMemoryAccountRepo {
 impl Repository<Account> for InMemoryAccountRepo {
     async fn load_events(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &String,
     ) -> Result<AggregateEvents<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         let events = store
@@ -178,10 +178,10 @@ impl Repository<Account> for InMemoryAccountRepo {
         Ok(AggregateEvents::new(events))
     }
 
-    async fn load_aggregate(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
+    async fn load_aggregate(&self, aggregate_id: &String) -> Result<Option<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
-            let mut acc = Account::new(aggregate_id);
+            let mut acc = Account::new(aggregate_id.clone());
             for env in events.iter() {
                 acc.apply(&env.event);
             }
@@ -214,12 +214,12 @@ impl Repository<Account> for InMemoryAccountRepo {
 async fn main() {
     let repo = InMemoryAccountRepo::default();
     let root = AggregateRoot::<Account, _>::new(repo.clone());
-    let id = "acc-1";
+    let id = String::from("acc-1");
 
     // 开户
     let events = root
         .execute(
-            id,
+            &id,
             AccountCommand::Open {
                 initial_balance: 1000,
             },
@@ -233,7 +233,7 @@ async fn main() {
     // 存款
     let events = root
         .execute(
-            id,
+            &id,
             AccountCommand::Deposit { amount: 500 },
             Metadata::default(),
         )
@@ -245,7 +245,7 @@ async fn main() {
     // 取款
     let events = root
         .execute(
-            id,
+            &id,
             AccountCommand::Withdraw { amount: 200 },
             Metadata::default(),
         )
@@ -255,7 +255,7 @@ async fn main() {
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
-    let loaded = repo.load_aggregate(id).await.unwrap().unwrap();
+    let loaded = repo.load_aggregate(&id).await.unwrap().unwrap();
     println!(
         "reloaded: id={}, balance={}, version= {}",
         loaded.id(),

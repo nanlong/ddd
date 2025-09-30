@@ -1,17 +1,17 @@
-use crate::domain_event::DomainEvent;
+use crate::event::DomainEvent;
 use async_trait::async_trait;
-use std::{error::Error, str::FromStr};
+use std::{error::Error, fmt::Display, str::FromStr};
 
 #[async_trait]
 pub trait Aggregate: Send + Sync {
     const TYPE: &'static str;
 
-    type Id: FromStr + ToString;
+    type Id: Clone + Display + FromStr + ToString;
     type Command;
     type Event: DomainEvent;
     type Error: Error;
 
-    fn new(aggregate_id: &str) -> Self;
+    fn new(aggregate_id: Self::Id) -> Self;
 
     fn id(&self) -> &Self::Id;
 
