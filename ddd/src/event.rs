@@ -27,6 +27,10 @@ where
 {
     /// 事件唯一ID
     pub event_id: String,
+    /// 事件类型
+    pub event_type: String,
+    /// 事件版本
+    pub event_version: i64,
     /// 聚合根ID
     pub aggregate_id: String,
     /// 聚合根类型
@@ -57,6 +61,8 @@ where
     ) -> Self {
         Self {
             event_id: event_id.into(),
+            event_type: event.event_type(),
+            event_version: event.event_version(),
             aggregate_id: aggregate.id().to_string(),
             aggregate_type: A::TYPE.to_string(),
             occurred_at: Utc::now(),
