@@ -76,7 +76,6 @@ impl DomainEvent for AccountEvent {
     }
 }
 
-#[async_trait]
 impl Aggregate for Account {
     const TYPE: &'static str = "account";
 
@@ -101,7 +100,7 @@ impl Aggregate for Account {
         self.version
     }
 
-    async fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
+    fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
             AccountCommand::Open { initial_balance } => {
                 if self.version > 0 {
@@ -180,10 +179,7 @@ impl Repository<Account> for InMemoryAccountRepo {
         aggregate_id: &str,
     ) -> Result<AggregateEvents<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
-        let events = store
-            .get(aggregate_id)
-            .cloned()
-            .unwrap_or_else(Vec::new);
+        let events = store.get(aggregate_id).cloned().unwrap_or_else(Vec::new);
         Ok(AggregateEvents::new(events))
     }
 

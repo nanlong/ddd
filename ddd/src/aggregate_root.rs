@@ -54,7 +54,7 @@ where
         };
 
         // 执行命令
-        let events = aggregate.execute(command).await.map_err(|e| {
+        let events = aggregate.execute(command).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to execute command on aggregate {} with id {}: {}",
                 A::TYPE,
