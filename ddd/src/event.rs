@@ -1,5 +1,6 @@
 use crate::aggregate::Aggregate;
 use chrono::{DateTime, Utc};
+use std::{slice::Iter, vec::IntoIter};
 
 pub trait DomainEvent {
     fn event_type(&self) -> String;
@@ -120,11 +121,12 @@ where
     }
 
     /// 迭代事件引用（不消费 AggregateEvents）
-    pub fn iter(&self) -> std::slice::Iter<'_, EventEnvelope<A>> {
+    pub fn iter(&self) -> Iter<'_, EventEnvelope<A>> {
         self.events.iter()
     }
 
-    pub fn into_iter(self) -> std::vec::IntoIter<EventEnvelope<A>> {
+    /// 迭代并消费 AggregateEvents
+    pub fn into_iter(self) -> IntoIter<EventEnvelope<A>> {
         self.events.into_iter()
     }
 }
