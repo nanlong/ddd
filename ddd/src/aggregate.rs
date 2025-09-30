@@ -6,7 +6,7 @@ use std::{error::Error, fmt::Display, str::FromStr};
 pub trait Aggregate: Send + Sync {
     const TYPE: &'static str;
 
-    type Id: Clone + Display + FromStr + ToString;
+    type Id: FromStr + AsRef<str> + Clone + Display;
     type Command;
     type Event: DomainEvent;
     type Error: Error;

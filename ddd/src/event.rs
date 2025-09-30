@@ -103,19 +103,28 @@ where
     pub fn last_modified_at(&self) -> Option<DateTime<Utc>> {
         self.events.last().map(|e| e.occurred_at)
     }
-}
 
-impl<A> Iterator for AggregateEvents<A>
-where
-    A: Aggregate,
-{
-    type Item = EventEnvelope<A>;
+    /// 获取事件列表的不可变引用
+    pub fn events(&self) -> &[EventEnvelope<A>] {
+        &self.events
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.events.is_empty() {
-            None
-        } else {
-            Some(self.events.remove(0))
-        }
+    /// 获取事件数量
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+
+    /// 判断是否为空
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
+
+    /// 迭代事件引用（不消费 AggregateEvents）
+    pub fn iter(&self) -> std::slice::Iter<'_, EventEnvelope<A>> {
+        self.events.iter()
+    }
+
+    pub fn into_iter(self) -> std::vec::IntoIter<EventEnvelope<A>> {
+        self.events.into_iter()
     }
 }

@@ -20,6 +20,7 @@ enum AccountError {
     AlreadyOpened,
     NotOpened,
     InsufficientFunds,
+    InvalidId(String),
 }
 
 impl Display for AccountError {
@@ -28,10 +29,18 @@ impl Display for AccountError {
             Self::AlreadyOpened => write!(f, "account already opened"),
             Self::NotOpened => write!(f, "account not opened"),
             Self::InsufficientFunds => write!(f, "insufficient funds"),
+            Self::InvalidId(msg) => write!(f, "invalid account id: {}", msg),
         }
     }
 }
 impl std::error::Error for AccountError {}
+
+impl From<std::string::ParseError> for AccountError {
+    fn from(_: std::string::ParseError) -> Self {
+        // String::from_str 永远不会失败，但为了类型系统完整性
+        Self::InvalidId("parse error".to_string())
+    }
+}
 
 #[derive(Debug)]
 enum AccountCommand {
@@ -168,20 +177,20 @@ struct InMemoryAccountRepo {
 impl Repository<Account> for InMemoryAccountRepo {
     async fn load_events(
         &self,
-        aggregate_id: &String,
+        aggregate_id: &str,
     ) -> Result<AggregateEvents<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         let events = store
             .get(aggregate_id)
             .cloned()
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_else(Vec::new);
         Ok(AggregateEvents::new(events))
     }
 
-    async fn load_aggregate(&self, aggregate_id: &String) -> Result<Option<Account>, AccountError> {
+    async fn load_aggregate(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
-            let mut acc = Account::new(aggregate_id.clone());
+            let mut acc = Account::new(aggregate_id.parse()?);
             for env in events.iter() {
                 acc.apply(&env.event);
             }

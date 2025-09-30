@@ -34,14 +34,18 @@ where
         metadata: Metadata,
     ) -> Result<Vec<EventEnvelope<A>>> {
         // 从仓库加载聚合
-        let loaded = self.repo.load_aggregate(aggregate_id).await.map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to load aggregate {} with id {}: {}",
-                A::TYPE,
-                aggregate_id,
-                e
-            )
-        })?;
+        let loaded = self
+            .repo
+            .load_aggregate(aggregate_id.as_ref())
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to load aggregate {} with id {}: {}",
+                    A::TYPE,
+                    aggregate_id,
+                    e
+                )
+            })?;
 
         // 如果不存在则创建新的聚合实例
         let mut aggregate = match loaded {
@@ -60,8 +64,8 @@ where
         })?;
 
         // 应用所有新生成的事件到聚合状态
-        for event in events.iter() {
-            aggregate.apply(&event);
+        for event in &events {
+            aggregate.apply(event);
         }
 
         // 保存聚合状态和未提交的事件
