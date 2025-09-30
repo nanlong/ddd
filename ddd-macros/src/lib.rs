@@ -8,11 +8,10 @@ use syn::{
 };
 
 /// 聚合根宏
-/// 追加 id: String, version: i64 两个字段（若缺失）
+/// 追加 id: IdType, version: i64 两个字段（若缺失）
+/// 支持键值形式：#[aggregate(id = IdType)]，若不指定则默认为 String。
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // 支持键值形式：#[aggregate(id = IdType, event = EventType)]
-    // 两个配置均为可选；仅当配置存在且字段缺失时注入对应字段。
     let cfg = parse_macro_input!(attr as AggregateAttrConfig);
     let input = parse_macro_input!(item as Item);
 
@@ -35,6 +34,9 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    // 确定使用的 id 类型
+    let id_type = cfg.id_ty.unwrap_or_else(|| syn::parse_quote! { String });
+
     // 重建字段顺序：将 id、version 放在最前，其他字段保持原有相对顺序
     let mut new_named: Punctuated<syn::Field, Token![,]> = Punctuated::new();
 
@@ -51,11 +53,11 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
         .find(|f| f.ident.as_ref().map(|i| i == "version").unwrap_or(false))
         .cloned();
 
-    // id：若存在则放前面；若不存在且配置了 id= 则新增并放前面
+    // id：若存在则放前面；若不存在则使用配置的类型（默认 String）新增
     if let Some(f) = existed_id {
         new_named.push(f);
-    } else if let Some(id_ty) = cfg.id_ty {
-        new_named.push(syn::parse_quote! { id: #id_ty });
+    } else {
+        new_named.push(syn::parse_quote! { id: #id_type });
     }
 
     // version：若存在则放前面；若不存在则新增并放前面
@@ -87,9 +89,11 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// pub enum XxxEvent {
 ///     Variant { field_a: T, ... },
 /// }
-/// 的具名字段变体，并为每个变体追加 id: String, version: i64 两个字段（若缺失）。
+/// 的具名字段变体，并为每个变体追加 id: IdType, version: i64 两个字段（若缺失）。
+/// 支持键值形式：#[event(id = IdType)]，若不指定则默认为 String。
 #[proc_macro_attribute]
-pub fn event(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let cfg = parse_macro_input!(attr as EventAttrConfig);
     let mut input = parse_macro_input!(item as Item);
 
     let enum_item = match &mut input {
@@ -101,16 +105,19 @@ pub fn event(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    // 确定使用的 id 类型
+    let id_type = cfg.id_ty.unwrap_or_else(|| syn::parse_quote! { String });
+
     for v in &mut enum_item.variants {
         match &mut v.fields {
             syn::Fields::Named(fields_named) => {
                 let mut new_named: Punctuated<syn::Field, Token![,]> = Punctuated::new();
 
                 // 如果缺失则添加 id、version 字段
-                if !has_field_named(fields_named, "id") {
-                    new_named.push(syn::parse_quote! { id: String });
+                if !has_field_named(&fields_named, "id") {
+                    new_named.push(syn::parse_quote! { id: #id_type });
                 }
-                if !has_field_named(fields_named, "version") {
+                if !has_field_named(&fields_named, "version") {
                     new_named.push(syn::parse_quote! { version: i64 });
                 }
 
@@ -143,7 +150,7 @@ fn has_field_named(fields: &syn::FieldsNamed, name: &str) -> bool {
         .any(|f| f.ident.as_ref().map(|i| i == name).unwrap_or(false))
 }
 
-// 解析 aggregate 宏键值参数：id = <Type>, event = <Type>
+// 解析 aggregate 宏键值参数：id = <Type>
 struct AggregateAttrConfig {
     id_ty: Option<Type>,
 }
@@ -174,7 +181,48 @@ impl Parse for AggregateAttrConfig {
                 _ => {
                     return Err(syn::Error::new(
                         kv.key.span(),
-                        "unknown key in attribute; expected 'id' or 'event'",
+                        "unknown key in attribute; expected 'id'",
+                    ));
+                }
+            }
+        }
+
+        Ok(Self { id_ty })
+    }
+}
+
+// 解析 event 宏键值参数：id = <Type>
+struct EventAttrConfig {
+    id_ty: Option<Type>,
+}
+
+impl Parse for EventAttrConfig {
+    fn parse(input: ParseStream) -> SynResult<Self> {
+        let mut id_ty: Option<Type> = None;
+
+        if input.is_empty() {
+            return Ok(Self { id_ty });
+        }
+
+        let pairs: Punctuated<KvType, Token![,]> =
+            Punctuated::<KvType, Token![,]>::parse_terminated(input)?;
+
+        for kv in pairs.into_iter() {
+            let key = kv.key.to_string();
+            match key.as_str() {
+                "id" => {
+                    if id_ty.is_some() {
+                        return Err(syn::Error::new(
+                            kv.key.span(),
+                            "duplicate key 'id' in attribute",
+                        ));
+                    }
+                    id_ty = Some(kv.ty);
+                }
+                _ => {
+                    return Err(syn::Error::new(
+                        kv.key.span(),
+                        "unknown key in attribute; expected 'id'",
                     ));
                 }
             }

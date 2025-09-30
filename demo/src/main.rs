@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
-#[aggregate(id = String)]
+#[aggregate]
 #[derive(Debug, Clone)]
 struct Account {
     balance: i64,
