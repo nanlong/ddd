@@ -1,4 +1,4 @@
-use crate::event::DomainEvent;
+use crate::domain_event::DomainEvent;
 use serde::{Serialize, de::DeserializeOwned};
 use std::{error::Error, fmt::Display, str::FromStr};
 

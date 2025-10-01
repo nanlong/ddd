@@ -1,7 +1,7 @@
 use crate::{
     aggregate::Aggregate,
-    event::{EventEnvelope, Metadata},
-    repository::Repository,
+    aggregate_repository::AggragateRepository,
+    domain_event::{EventEnvelope, Metadata},
 };
 use anyhow::Result;
 use std::marker::PhantomData;
@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 pub struct AggregateRoot<A, R>
 where
     A: Aggregate,
-    R: Repository<A>,
+    R: AggragateRepository<A>,
 {
     repo: R,
     _marker: PhantomData<A>,
@@ -18,7 +18,7 @@ where
 impl<A, R> AggregateRoot<A, R>
 where
     A: Aggregate,
-    R: Repository<A>,
+    R: AggragateRepository<A>,
 {
     pub fn new(repo: R) -> Self {
         Self {

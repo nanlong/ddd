@@ -2,33 +2,33 @@ use anyhow::Result;
 use std::sync::Arc;
 
 /// 事件版本升级器（Upcaster）
-pub trait Upcaster: Send + Sync {
+pub trait EventUpcaster: Send + Sync {
     type Event;
 
     fn applies(&self, e: &Self::Event) -> bool;
 
-    fn upcast(&self, e: Self::Event) -> Result<UpcastResult<Self::Event>>;
+    fn upcast(&self, e: Self::Event) -> Result<EventUpcasterResult<Self::Event>>;
 }
 
 /// 升级结果：单个、新的多个、或丢弃
-pub enum UpcastResult<T> {
+pub enum EventUpcasterResult<T> {
     One(T),
     Many(Vec<T>),
     Drop,
 }
 
 /// 事件升级链：按顺序应用多个 Upcaster
-pub struct UpcasterChain<T> {
-    stages: Vec<Arc<dyn Upcaster<Event = T>>>,
+pub struct EventUpcasterChain<T> {
+    stages: Vec<Arc<dyn EventUpcaster<Event = T>>>,
 }
 
-impl<T> UpcasterChain<T> {
+impl<T> EventUpcasterChain<T> {
     pub fn new() -> Self {
         Self { stages: vec![] }
     }
 
     /// 添加一个 Upcaster 升级器到链中
-    pub fn add<U: Upcaster<Event = T> + 'static>(mut self, u: U) -> Self {
+    pub fn add<U: EventUpcaster<Event = T> + 'static>(mut self, u: U) -> Self {
         self.stages.push(Arc::new(u));
         self
     }
@@ -69,7 +69,7 @@ impl<T> UpcasterChain<T> {
     /// 对事件列表应用单个升级器
     fn apply_stage(
         &self,
-        stage: &Arc<dyn Upcaster<Event = T>>,
+        stage: &Arc<dyn EventUpcaster<Event = T>>,
         events: Vec<T>,
         has_changes: &mut bool,
     ) -> Result<Vec<T>> {
@@ -80,7 +80,7 @@ impl<T> UpcasterChain<T> {
                     *has_changes = true;
                     stage.upcast(event)
                 } else {
-                    Ok(UpcastResult::One(event))
+                    Ok(EventUpcasterResult::One(event))
                 }
             })
             .collect::<Result<Vec<_>>>()?;
@@ -88,9 +88,9 @@ impl<T> UpcasterChain<T> {
         Ok(results
             .into_iter()
             .flat_map(|result| match result {
-                UpcastResult::One(e) => vec![e],
-                UpcastResult::Many(v) => v,
-                UpcastResult::Drop => vec![],
+                EventUpcasterResult::One(e) => vec![e],
+                EventUpcasterResult::Many(v) => v,
+                EventUpcasterResult::Drop => vec![],
             })
             .collect())
     }

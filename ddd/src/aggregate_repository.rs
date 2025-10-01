@@ -1,11 +1,11 @@
 use crate::{
     aggregate::Aggregate,
-    event::{AggregateEvents, EventEnvelope, Metadata},
+    domain_event::{AggregateEvents, EventEnvelope, Metadata},
 };
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait Repository<A>: Send + Sync
+pub trait AggragateRepository<A>: Send + Sync
 where
     A: Aggregate,
 {

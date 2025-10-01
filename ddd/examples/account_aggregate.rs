@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
+use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
-use ddd::repository::Repository;
+use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -173,7 +173,7 @@ struct InMemoryAccountRepo {
 }
 
 #[async_trait]
-impl Repository<Account> for InMemoryAccountRepo {
+impl AggragateRepository<Account> for InMemoryAccountRepo {
     async fn load_events(
         &self,
         aggregate_id: &str,

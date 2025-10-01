@@ -4,7 +4,7 @@
 /// 3. 链式组合 UpcasterChain
 /// 4. 读取原始事件，统一升级
 use anyhow::Result;
-use ddd::upcast::{UpcastResult, Upcaster, UpcasterChain};
+use ddd::event_upcaster::{EventUpcasterResult, EventUpcaster, EventUpcasterChain};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -24,14 +24,14 @@ pub struct EventEnvelope {
 ///      目标 v2: { "amount": 100, "currency": "CNY" }
 pub struct CreditedV1ToV2;
 
-impl Upcaster for CreditedV1ToV2 {
+impl EventUpcaster for CreditedV1ToV2 {
     type Event = EventEnvelope;
 
     fn applies(&self, e: &EventEnvelope) -> bool {
         e.event_type == "account.credited" && e.schema_version == 1
     }
 
-    fn upcast(&self, mut e: EventEnvelope) -> Result<UpcastResult<EventEnvelope>> {
+    fn upcast(&self, mut e: EventEnvelope) -> Result<EventUpcasterResult<EventEnvelope>> {
         let amount = e
             .payload
             .get("amount")
@@ -45,20 +45,20 @@ impl Upcaster for CreditedV1ToV2 {
         });
         e.schema_version = 2;
 
-        Ok(UpcastResult::One(e))
+        Ok(EventUpcasterResult::One(e))
     }
 }
 
 pub struct CreditedV2ToV3;
 
-impl Upcaster for CreditedV2ToV3 {
+impl EventUpcaster for CreditedV2ToV3 {
     type Event = EventEnvelope;
 
     fn applies(&self, e: &EventEnvelope) -> bool {
         e.event_type == "account.credited" && e.schema_version == 2
     }
 
-    fn upcast(&self, mut e: EventEnvelope) -> Result<UpcastResult<EventEnvelope>> {
+    fn upcast(&self, mut e: EventEnvelope) -> Result<EventUpcasterResult<EventEnvelope>> {
         let amount = e
             .payload
             .get("amount")
@@ -75,20 +75,20 @@ impl Upcaster for CreditedV2ToV3 {
         });
         e.schema_version = 3;
 
-        Ok(UpcastResult::One(e))
+        Ok(EventUpcasterResult::One(e))
     }
 }
 
 pub struct CreditedV3ToSplitV4;
 
-impl Upcaster for CreditedV3ToSplitV4 {
+impl EventUpcaster for CreditedV3ToSplitV4 {
     type Event = EventEnvelope;
 
     fn applies(&self, e: &EventEnvelope) -> bool {
         e.event_type == "account.credited" && e.schema_version == 3
     }
 
-    fn upcast(&self, e: EventEnvelope) -> Result<UpcastResult<EventEnvelope>> {
+    fn upcast(&self, e: EventEnvelope) -> Result<EventUpcasterResult<EventEnvelope>> {
         let minor_units = e
             .payload
             .get("minor_units")
@@ -106,12 +106,12 @@ impl Upcaster for CreditedV3ToSplitV4 {
         ledger.schema_version = 4;
         ledger.payload = json!({ "delta": minor_units, "currency": currency });
 
-        Ok(UpcastResult::Many(vec![funds, ledger]))
+        Ok(EventUpcasterResult::Many(vec![funds, ledger]))
     }
 }
 
-pub fn default_upcasters() -> UpcasterChain<EventEnvelope> {
-    UpcasterChain::new()
+pub fn default_upcasters() -> EventUpcasterChain<EventEnvelope> {
+    EventUpcasterChain::new()
         .add(CreditedV1ToV2)
         .add(CreditedV2ToV3)
         .add(CreditedV3ToSplitV4)
