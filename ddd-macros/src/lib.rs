@@ -8,7 +8,7 @@ use syn::{
 };
 
 /// 聚合根宏
-/// 追加 id: IdType, version: i64 两个字段（若缺失）
+/// 追加 id: IdType, version: usize 两个字段（若缺失）
 /// 支持键值形式：#[aggregate(id = IdType)]，若不指定则默认为 String。
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -64,7 +64,7 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
     if let Some(f) = existed_version {
         new_named.push(f);
     } else {
-        new_named.push(syn::parse_quote! { version: i64 });
+        new_named.push(syn::parse_quote! { version: usize });
     }
 
     // 其他字段按原来顺序追加，但跳过 id/version，避免重复
@@ -89,7 +89,7 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// pub enum XxxEvent {
 ///     Variant { field_a: T, ... },
 /// }
-/// 的具名字段变体，并为每个变体追加 id: IdType, version: i64 两个字段（若缺失）。
+/// 的具名字段变体，并为每个变体追加 id: IdType, version: usize 两个字段（若缺失）。
 /// 支持键值形式：#[event(id = IdType)]，若不指定则默认为 String。
 #[proc_macro_attribute]
 pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -118,7 +118,7 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                     new_named.push(syn::parse_quote! { id: #id_type });
                 }
                 if !has_field_named(&fields_named, "version") {
-                    new_named.push(syn::parse_quote! { version: i64 });
+                    new_named.push(syn::parse_quote! { version: usize });
                 }
 
                 // 保留原有字段顺序

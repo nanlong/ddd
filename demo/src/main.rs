@@ -4,15 +4,16 @@ use ddd::aggregate_root::AggregateRoot;
 use ddd::event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
 use ddd::repository::Repository;
 use ddd_macros::{aggregate, event};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
 #[aggregate]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Account {
-    balance: i64,
+    balance: usize,
 }
 
 #[derive(Debug)]
@@ -44,17 +45,17 @@ impl From<std::string::ParseError> for AccountError {
 
 #[derive(Debug)]
 enum AccountCommand {
-    Open { initial_balance: i64 },
-    Deposit { amount: i64 },
-    Withdraw { amount: i64 },
+    Open { initial_balance: usize },
+    Deposit { amount: usize },
+    Withdraw { amount: usize },
 }
 
 #[event]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum AccountEvent {
-    Opened { initial_balance: i64 },
-    Deposited { amount: i64 },
-    Withdrawn { amount: i64 },
+    Opened { initial_balance: usize },
+    Deposited { amount: usize },
+    Withdrawn { amount: usize },
 }
 
 impl DomainEvent for AccountEvent {
@@ -67,7 +68,7 @@ impl DomainEvent for AccountEvent {
         .to_string()
     }
 
-    fn event_version(&self) -> i64 {
+    fn event_version(&self) -> usize {
         match self {
             AccountEvent::Opened { version, .. }
             | AccountEvent::Deposited { version, .. }
@@ -96,7 +97,7 @@ impl Aggregate for Account {
         &self.id
     }
 
-    fn version(&self) -> i64 {
+    fn version(&self) -> usize {
         self.version
     }
 
@@ -206,8 +207,7 @@ impl Repository<Account> for InMemoryAccountRepo {
         let entry = store.entry(aggregate.id().to_string()).or_default();
         let mut out = Vec::with_capacity(events.len());
         for e in events {
-            let eid = ulid::Ulid::new().to_string();
-            let env = EventEnvelope::<Account>::new(eid, aggregate, e, metadata.clone());
+            let env = EventEnvelope::<Account>::new(aggregate, e, metadata.clone());
             entry.push(env.clone());
             out.push(env);
         }

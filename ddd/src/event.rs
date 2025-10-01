@@ -1,11 +1,14 @@
 use crate::aggregate::Aggregate;
 use chrono::{DateTime, Utc};
-use std::{slice::Iter, vec::IntoIter};
+use serde::{Serialize, de::DeserializeOwned};
+use std::{fmt, slice::Iter, vec::IntoIter};
 
-pub trait DomainEvent {
+pub trait DomainEvent:
+    Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
+{
     fn event_type(&self) -> String;
 
-    fn event_version(&self) -> i64;
+    fn event_version(&self) -> usize;
 }
 
 /// 事件元数据
@@ -25,16 +28,14 @@ pub struct EventEnvelope<A>
 where
     A: Aggregate,
 {
-    /// 事件唯一ID
-    pub event_id: String,
-    /// 事件类型
-    pub event_type: String,
-    /// 事件版本
-    pub event_version: i64,
     /// 聚合根ID
     pub aggregate_id: String,
     /// 聚合根类型
     pub aggregate_type: String,
+    /// 事件类型
+    pub event_type: String,
+    /// 事件版本
+    pub event_version: usize,
     /// 事件发生时间
     pub occurred_at: DateTime<Utc>,
     /// 关联ID，用于追踪一个请求的所有事件
@@ -53,18 +54,12 @@ impl<A> EventEnvelope<A>
 where
     A: Aggregate,
 {
-    pub fn new(
-        event_id: impl Into<String>,
-        aggregate: &A,
-        event: A::Event,
-        metadata: Metadata,
-    ) -> Self {
+    pub fn new(aggregate: &A, event: A::Event, metadata: Metadata) -> Self {
         Self {
-            event_id: event_id.into(),
-            event_type: event.event_type(),
-            event_version: event.event_version(),
             aggregate_id: aggregate.id().to_string(),
             aggregate_type: A::TYPE.to_string(),
+            event_type: event.event_type(),
+            event_version: event.event_version(),
             occurred_at: Utc::now(),
             correlation_id: metadata.correlation_id,
             causation_id: metadata.causation_id,
