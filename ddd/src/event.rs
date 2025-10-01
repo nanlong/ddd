@@ -1,7 +1,8 @@
 use crate::aggregate::Aggregate;
+use bon::Builder;
 use chrono::{DateTime, Utc};
-use serde::{Serialize, de::DeserializeOwned};
-use std::{fmt, slice::Iter, vec::IntoIter};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::{collections::HashMap, fmt, slice::Iter, vec::IntoIter};
 
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
@@ -14,12 +15,16 @@ pub trait DomainEvent:
 /// 事件元数据
 /// 包含事件的关联信息，如关联ID、因果ID、触发者等
 /// 一般来说，这些信息由interface层（如API网关、消息消费者等）的请求上下文中提取
-#[derive(Default, Debug, Clone, bon::Builder)]
+#[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
+    aggregate_id: String,
+    aggregate_type: String,
+    occurred_at: DateTime<Utc>,
     correlation_id: Option<String>,
     causation_id: Option<String>,
     actor_type: Option<String>,
     actor_id: Option<String>,
+    data: HashMap<String, String>,
 }
 
 /// 事件信封，包含事件及其元数据
@@ -28,45 +33,34 @@ pub struct EventEnvelope<A>
 where
     A: Aggregate,
 {
-    /// 聚合根ID
-    pub aggregate_id: String,
-    /// 聚合根类型
-    pub aggregate_type: String,
-    /// 事件类型
-    pub event_type: String,
-    /// 事件版本
-    pub event_version: usize,
-    /// 事件发生时间
-    pub occurred_at: DateTime<Utc>,
-    /// 关联ID，用于追踪一个请求的所有事件
-    pub correlation_id: Option<String>,
-    /// 因果ID, 用于标识触发当前事件的上一个事件
-    pub causation_id: Option<String>,
-    /// 事件触发者类型
-    pub actor_type: Option<String>,
-    /// 事件触发者ID
-    pub actor_id: Option<String>,
-    /// 事件数据
-    pub event: A::Event,
+    pub metadata: Metadata,
+    pub payload: A::Event,
 }
 
 impl<A> EventEnvelope<A>
 where
     A: Aggregate,
 {
-    pub fn new(aggregate: &A, event: A::Event, metadata: Metadata) -> Self {
-        Self {
-            aggregate_id: aggregate.id().to_string(),
-            aggregate_type: A::TYPE.to_string(),
-            event_type: event.event_type(),
-            event_version: event.event_version(),
-            occurred_at: Utc::now(),
-            correlation_id: metadata.correlation_id,
-            causation_id: metadata.causation_id,
-            actor_type: metadata.actor_type,
-            actor_id: metadata.actor_id,
-            event,
-        }
+    pub fn new(metadata: Metadata, payload: A::Event) -> Self {
+        Self { metadata, payload }
+    }
+}
+
+pub struct SerializedEvent {
+    metadata: serde_json::Value,
+    payload: serde_json::Value,
+}
+
+impl<A> TryFrom<SerializedEvent> for EventEnvelope<A>
+where
+    A: Aggregate,
+{
+    type Error = serde_json::Error;
+
+    fn try_from(value: SerializedEvent) -> Result<Self, Self::Error> {
+        let metadata: Metadata = serde_json::from_value(value.metadata)?;
+        let payload: A::Event = serde_json::from_value(value.payload)?;
+        Ok(Self { metadata, payload })
     }
 }
 
@@ -88,22 +82,24 @@ where
 
     /// 获取创建者ID（第一个事件的触发者）
     pub fn created_by(&self) -> Option<String> {
-        self.events.first().and_then(|e| e.actor_id.clone())
+        self.events
+            .first()
+            .and_then(|e| e.metadata.actor_id.clone())
     }
 
     /// 获取最后修改者ID（最后一个事件的触发者）
     pub fn last_modified_by(&self) -> Option<String> {
-        self.events.last().and_then(|e| e.actor_id.clone())
+        self.events.last().and_then(|e| e.metadata.actor_id.clone())
     }
 
     /// 获取创建时间（第一个事件的发生时间）
     pub fn created_at(&self) -> Option<DateTime<Utc>> {
-        self.events.first().map(|e| e.occurred_at)
+        self.events.first().map(|e| e.metadata.occurred_at)
     }
 
     /// 获取最后修改时间（最后一个事件的发生时间）
     pub fn last_modified_at(&self) -> Option<DateTime<Utc>> {
-        self.events.last().map(|e| e.occurred_at)
+        self.events.last().map(|e| e.metadata.occurred_at)
     }
 
     /// 获取事件列表的不可变引用

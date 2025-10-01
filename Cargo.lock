@@ -126,6 +126,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link",
 ]
@@ -179,8 +180,11 @@ dependencies = [
  "async-trait",
  "bon",
  "chrono",
+ "ddd-macros",
  "serde",
  "serde_json",
+ "tokio",
+ "ulid",
 ]
 
 [[package]]
@@ -190,20 +194,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "demo"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "ddd",
- "ddd-macros",
- "serde",
- "thiserror",
- "tokio",
- "ulid",
 ]
 
 [[package]]
@@ -521,26 +511,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "thiserror"
-version = "1.0.69"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "1.0.69"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

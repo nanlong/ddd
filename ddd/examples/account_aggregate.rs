@@ -38,7 +38,6 @@ impl std::error::Error for AccountError {}
 
 impl From<std::string::ParseError> for AccountError {
     fn from(_: std::string::ParseError) -> Self {
-        // String::from_str 永远不会失败，但为了类型系统完整性
         Self::InvalidId("parse error".to_string())
     }
 }
@@ -104,29 +103,29 @@ impl Aggregate for Account {
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
             AccountCommand::Open { initial_balance } => {
-                if self.version > 0 {
+                if self.version() > 0 {
                     return Err(AccountError::AlreadyOpened);
                 }
                 let evt = AccountEvent::Opened {
                     id: Ulid::new().to_string(),
-                    version: self.version + 1,
+                    version: self.version() + 1,
                     initial_balance,
                 };
                 Ok(vec![evt])
             }
             AccountCommand::Deposit { amount } => {
-                if self.version == 0 {
+                if self.version() == 0 {
                     return Err(AccountError::NotOpened);
                 }
                 let evt = AccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    version: self.version + 1,
+                    version: self.version() + 1,
                     amount,
                 };
                 Ok(vec![evt])
             }
             AccountCommand::Withdraw { amount } => {
-                if self.version == 0 {
+                if self.version() == 0 {
                     return Err(AccountError::NotOpened);
                 }
                 if self.balance < amount {
@@ -134,7 +133,7 @@ impl Aggregate for Account {
                 }
                 let evt = AccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
-                    version: self.version + 1,
+                    version: self.version() + 1,
                     amount,
                 };
                 Ok(vec![evt])
@@ -189,7 +188,7 @@ impl Repository<Account> for InMemoryAccountRepo {
         if let Some(events) = store.get(aggregate_id) {
             let mut acc = Account::new(aggregate_id.parse()?);
             for env in events.iter() {
-                acc.apply(&env.event);
+                acc.apply(&env.payload);
             }
             Ok(Some(acc))
         } else {
@@ -207,7 +206,7 @@ impl Repository<Account> for InMemoryAccountRepo {
         let entry = store.entry(aggregate.id().to_string()).or_default();
         let mut out = Vec::with_capacity(events.len());
         for e in events {
-            let env = EventEnvelope::<Account>::new(aggregate, e, metadata.clone());
+            let env = EventEnvelope::<Account>::new(metadata.clone(), e);
             entry.push(env.clone());
             out.push(env);
         }
@@ -262,7 +261,7 @@ async fn main() {
     // 重新加载并打印状态
     let loaded = repo.load_aggregate(&id).await.unwrap().unwrap();
     println!(
-        "reloaded: id={}, balance={}, version= {}",
+        "reloaded: id={}, balance={}, version={}",
         loaded.id(),
         loaded.balance,
         loaded.version()
