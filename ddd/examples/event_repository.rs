@@ -268,7 +268,8 @@ where
     E: EventRepository,
 {
     event_repo: E,
-    upcaster_chain: EventUpcasterChain<EventEnvelope<A>>,
+    upcaster_chain: EventUpcasterChain,
+    _phantom: std::marker::PhantomData<A>,
 }
 
 impl<A, E> BankAccountRepository<A, E>
@@ -280,6 +281,7 @@ where
         Self {
             event_repo,
             upcaster_chain: EventUpcasterChain::new(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }

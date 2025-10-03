@@ -69,9 +69,9 @@ impl DomainEvent for AccountEvent {
 
     fn event_version(&self) -> usize {
         match self {
-            AccountEvent::Opened { version, .. }
-            | AccountEvent::Deposited { version, .. }
-            | AccountEvent::Withdrawn { version, .. } => *version,
+            AccountEvent::Opened { .. } => 3,
+            AccountEvent::Deposited { .. } => 1,
+            AccountEvent::Withdrawn { .. } => 1,
         }
     }
 }

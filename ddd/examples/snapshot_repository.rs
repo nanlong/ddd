@@ -450,7 +450,8 @@ where
 {
     event_repo: E,
     snapshot_repo: S,
-    upcaster_chain: EventUpcasterChain<EventEnvelope<A>>,
+    upcaster_chain: EventUpcasterChain,
+    _phantom: std::marker::PhantomData<A>,
 }
 
 impl<A, E, S> OrderRepository<A, E, S>
@@ -464,6 +465,7 @@ where
             event_repo,
             snapshot_repo,
             upcaster_chain: EventUpcasterChain::new(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }

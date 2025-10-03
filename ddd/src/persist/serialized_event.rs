@@ -130,18 +130,18 @@ where
 }
 
 pub fn deserialize_events<A>(
-    upcaster_chain: &EventUpcasterChain<EventEnvelope<A>>,
+    upcaster_chain: &EventUpcasterChain,
     events: Vec<SerializedEvent>,
 ) -> Result<Vec<EventEnvelope<A>>>
 where
     A: Aggregate,
 {
+    let events = upcaster_chain.upcast_all(events)?;
+
     let events = events
         .iter()
         .map(|e| EventEnvelope::try_from(e))
         .collect::<Result<Vec<_>, _>>()?;
-
-    let events = upcaster_chain.upcast_all(events)?;
 
     Ok(events)
 }
