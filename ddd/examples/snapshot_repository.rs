@@ -9,12 +9,11 @@ use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
-    AggragateRepository, EventRepository, SerializedEvent, SnapshotRepository, deserialize_events,
-    serialize_events,
+    AggragateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
+    deserialize_events, serialize_events,
 };
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
@@ -326,34 +325,9 @@ impl Aggregate for OrderAggregate {
 }
 
 // ============================================================================
-// 序列化快照定义
+// 使用库提供的 SerializedSnapshot
 // ============================================================================
-
-/// 序列化快照，用于持久化存储
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedSnapshot {
-    pub aggregate_id: String,
-    pub aggregate_type: String,
-    pub version: usize,
-    pub payload: Value,
-    pub created_at: i64,
-}
-
-impl SerializedSnapshot {
-    fn from_aggregate<A: Aggregate>(aggregate: &A) -> Result<Self> {
-        Ok(Self {
-            aggregate_id: aggregate.id().to_string(),
-            aggregate_type: A::TYPE.to_string(),
-            version: aggregate.version(),
-            payload: serde_json::to_value(aggregate)?,
-            created_at: chrono::Utc::now().timestamp(),
-        })
-    }
-
-    fn to_aggregate<A: Aggregate>(&self) -> Result<A> {
-        Ok(serde_json::from_value(self.payload.clone())?)
-    }
-}
+// SerializedSnapshot 现在由 ddd::persist 模块提供
 
 // ============================================================================
 // 内存事件仓储实现
@@ -368,10 +342,7 @@ struct InMemoryEventRepository {
 #[async_trait]
 impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
-    async fn get_events<A: Aggregate>(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Vec<SerializedEvent>> {
+    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
     }
@@ -422,14 +393,12 @@ struct InMemorySnapshotRepository {
 
 #[async_trait]
 impl SnapshotRepository for InMemorySnapshotRepository {
-    type SerializedSnapshot = SerializedSnapshot;
-
     /// 获取快照，如果指定版本则获取该版本或之前的最新快照
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
         version: Option<usize>,
-    ) -> Result<Option<Self::SerializedSnapshot>> {
+    ) -> Result<Option<SerializedSnapshot>> {
         let snapshots = self.snapshots.lock().unwrap();
         let key = (A::TYPE.to_string(), aggregate_id.to_string());
 
@@ -439,8 +408,8 @@ impl SnapshotRepository for InMemorySnapshotRepository {
                     // 找到版本 <= v 的最新快照
                     Ok(snaps
                         .iter()
-                        .filter(|s| s.version <= v)
-                        .max_by_key(|s| s.version)
+                        .filter(|s| s.aggregate_version() <= v)
+                        .max_by_key(|s| s.aggregate_version())
                         .cloned())
                 }
                 None => {
@@ -463,7 +432,7 @@ impl SnapshotRepository for InMemorySnapshotRepository {
 
         // 保持版本排序
         entry.push(snapshot);
-        entry.sort_by_key(|s| s.version);
+        entry.sort_by_key(|s| s.aggregate_version());
 
         Ok(())
     }
@@ -503,7 +472,7 @@ where
 impl<E, S> AggragateRepository<OrderAggregate> for OrderRepository<OrderAggregate, E, S>
 where
     E: EventRepository,
-    S: SnapshotRepository<SerializedSnapshot = SerializedSnapshot>,
+    S: SnapshotRepository,
 {
     async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, OrderError> {
         // 1. 尝试从快照加载
@@ -513,7 +482,7 @@ where
             .await?
         {
             let mut order: OrderAggregate = snapshot.to_aggregate()?;
-            let snapshot_version = snapshot.version;
+            let snapshot_version = snapshot.aggregate_version();
 
             // 2. 加载快照之后的增量事件
             let incremental = self
@@ -666,7 +635,7 @@ async fn main() -> Result<()> {
         .get_snapshot::<OrderAggregate>(&order_id, None)
         .await?
     {
-        println!("最新快照: 版本={}", snapshot.version);
+        println!("最新快照: 版本={}", snapshot.aggregate_version());
         let restored: OrderAggregate = snapshot.to_aggregate()?;
         println!(
             "  状态: {:?}, 总金额: {}, 商品数: {}",
@@ -681,7 +650,10 @@ async fn main() -> Result<()> {
         .get_snapshot::<OrderAggregate>(&order_id, Some(4))
         .await?
     {
-        println!("\n查询版本4的快照: 实际返回版本={}", snapshot.version);
+        println!(
+            "\n查询版本4的快照: 实际返回版本={}",
+            snapshot.aggregate_version()
+        );
         let restored: OrderAggregate = snapshot.to_aggregate()?;
         println!(
             "  状态: {:?}, 总金额: {}, 商品数: {}",
