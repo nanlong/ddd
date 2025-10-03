@@ -215,13 +215,11 @@ struct InMemoryEventRepository {
 
 #[async_trait]
 impl EventRepository for InMemoryEventRepository {
-    type SerializedEvent = SerializedEvent;
-
     /// 获取聚合的所有事件
     async fn get_events<A: Aggregate>(
         &self,
         aggregate_id: &str,
-    ) -> Result<Vec<Self::SerializedEvent>> {
+    ) -> Result<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
     }
@@ -231,7 +229,7 @@ impl EventRepository for InMemoryEventRepository {
         &self,
         aggregate_id: &str,
         last_version: usize,
-    ) -> Result<Vec<Self::SerializedEvent>> {
+    ) -> Result<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
             .get(aggregate_id)
@@ -245,7 +243,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    async fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+    async fn save<A: Aggregate>(&self, events: &[SerializedEvent]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -289,7 +287,7 @@ where
 #[async_trait]
 impl<E> AggragateRepository<BankAccount> for BankAccountRepository<BankAccount, E>
 where
-    E: EventRepository<SerializedEvent = SerializedEvent>,
+    E: EventRepository,
 {
     async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, BankAccountError> {
         let serialized = self
