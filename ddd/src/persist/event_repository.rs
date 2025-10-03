@@ -17,7 +17,7 @@ pub trait EventRepository: Send + Sync {
         last_version: usize,
     ) -> Result<Vec<SerializedEvent>>;
 
-    async fn save<A: Aggregate>(&self, events: &[SerializedEvent]) -> Result<()>;
+    async fn save(&self, events: &[SerializedEvent]) -> Result<()>;
 }
 
 #[async_trait]
@@ -56,8 +56,8 @@ where
             .await
     }
 
-    async fn save<A: Aggregate>(&self, events: &[SerializedEvent]) -> Result<()> {
-        (**self).save::<A>(events).await
+    async fn save(&self, events: &[SerializedEvent]) -> Result<()> {
+        (**self).save(events).await
     }
 }
 
