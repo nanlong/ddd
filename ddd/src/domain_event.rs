@@ -91,31 +91,6 @@ where
     }
 }
 
-pub struct SerializedEvent {
-    metadata: serde_json::Value,
-    payload: serde_json::Value,
-    context: serde_json::Value,
-}
-
-impl<A> TryFrom<SerializedEvent> for EventEnvelope<A>
-where
-    A: Aggregate,
-{
-    type Error = serde_json::Error;
-
-    fn try_from(value: SerializedEvent) -> Result<Self, Self::Error> {
-        let metadata: Metadata = serde_json::from_value(value.metadata)?;
-        let payload: A::Event = serde_json::from_value(value.payload)?;
-        let context: BusinessContext = serde_json::from_value(value.context)?;
-
-        Ok(Self {
-            metadata,
-            payload,
-            context,
-        })
-    }
-}
-
 /// 聚合事件集合，按时间顺序排列，加载当前聚合根所有的事件
 pub struct AggregateEvents<A>
 where
