@@ -1,7 +1,7 @@
 use crate::{
     aggregate::Aggregate,
-    aggregate_repository::AggragateRepository,
     domain_event::{BusinessContext, EventEnvelope},
+    persist::AggragateRepository,
 };
 use anyhow::Result;
 use std::marker::PhantomData;

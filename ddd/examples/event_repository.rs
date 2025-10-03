@@ -3,10 +3,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
-use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope, Metadata};
-use ddd::event_repository::EventRepository;
+use ddd::persist::{AggragateRepository, EventRepository};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

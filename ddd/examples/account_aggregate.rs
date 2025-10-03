@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
-use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::persist::AggragateRepository;
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
