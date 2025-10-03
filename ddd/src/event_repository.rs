@@ -17,5 +17,5 @@ pub trait EventRepository: Send + Sync {
         last_version: usize,
     ) -> Result<Vec<Self::SerializedEvent>>;
 
-    fn commit<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()>;
+    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()>;
 }

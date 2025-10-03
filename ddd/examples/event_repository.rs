@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
+use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope, Metadata};
 use ddd::event_repository::EventRepository;
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
@@ -216,29 +216,36 @@ pub struct SerializedEvent {
     pub sequence: usize,
     pub metadata: Value,
     pub payload: Value,
+    pub context: Value,
 }
 
 impl SerializedEvent {
-    fn from_envelope<A: Aggregate>(
-        envelope: &EventEnvelope<A>,
-        aggregate_id: &str,
-        sequence: usize,
-    ) -> Result<Self> {
+    fn from_envelope<A: Aggregate>(envelope: &EventEnvelope<A>, sequence: usize) -> Result<Self> {
+        let metadata_value = serde_json::to_value(&envelope.metadata)?;
+        let metadata_map = metadata_value.as_object().unwrap();
+
         Ok(Self {
-            aggregate_id: aggregate_id.to_string(),
-            aggregate_type: A::TYPE.to_string(),
+            aggregate_id: metadata_map["aggregate_id"].as_str().unwrap().to_string(),
+            aggregate_type: metadata_map["aggregate_type"].as_str().unwrap().to_string(),
             event_type: envelope.payload.event_type(),
             event_version: envelope.payload.event_version(),
             sequence,
-            metadata: serde_json::to_value(&envelope.metadata)?,
+            metadata: metadata_value,
             payload: serde_json::to_value(&envelope.payload)?,
+            context: serde_json::to_value(&envelope.context)?,
         })
     }
 
     fn to_envelope<A: Aggregate>(&self) -> Result<EventEnvelope<A>> {
         let metadata: Metadata = serde_json::from_value(self.metadata.clone())?;
         let payload: A::Event = serde_json::from_value(self.payload.clone())?;
-        Ok(EventEnvelope::new(metadata, payload))
+        let context: BusinessContext = serde_json::from_value(self.context.clone())?;
+
+        Ok(EventEnvelope {
+            metadata,
+            payload,
+            context,
+        })
     }
 }
 
@@ -283,8 +290,8 @@ impl EventRepository for InMemoryEventRepository {
             .unwrap_or_else(Vec::new))
     }
 
-    /// 提交事件到仓储
-    fn commit<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+    /// 保存事件到仓储
+    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -316,43 +323,33 @@ impl BankAccountRepository {
 
 #[async_trait]
 impl AggragateRepository<BankAccount> for BankAccountRepository {
-    async fn load_events(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<AggregateEvents<BankAccount>, BankAccountError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, BankAccountError> {
         let serialized = self
             .event_repo
             .get_events::<BankAccount>(aggregate_id)
             .await?;
-        let envelopes = deserialize_events::<BankAccount>(&serialized)?;
-        Ok(AggregateEvents::new(envelopes))
-    }
 
-    async fn load_aggregate(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Option<BankAccount>, BankAccountError> {
-        let events = self.load_events(aggregate_id).await?;
-        if events.is_empty() {
+        if serialized.is_empty() {
             return Ok(None);
         }
 
+        let envelopes = deserialize_events::<BankAccount>(&serialized)?;
         let mut account = BankAccount::new(aggregate_id.to_string());
-        for envelope in events.iter() {
+        for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
         }
         Ok(Some(account))
     }
 
-    async fn commit(
+    async fn save(
         &self,
         aggregate: &BankAccount,
         events: Vec<BankAccountEvent>,
-        metadata: Metadata,
+        context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<BankAccount>>, BankAccountError> {
         let envelopes: Vec<EventEnvelope<BankAccount>> = events
             .into_iter()
-            .map(|e| EventEnvelope::new(metadata.clone(), e))
+            .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
 
         let last_seq = self
@@ -360,8 +357,8 @@ impl AggragateRepository<BankAccount> for BankAccountRepository {
             .get_events::<BankAccount>(aggregate.id())
             .await?
             .len();
-        let serialized = serialize_events(&envelopes, aggregate.id(), last_seq + 1)?;
-        self.event_repo.commit::<BankAccount>(&serialized)?;
+        let serialized = serialize_events(&envelopes, last_seq + 1)?;
+        self.event_repo.save::<BankAccount>(&serialized)?;
 
         Ok(envelopes)
     }
@@ -373,13 +370,12 @@ impl AggragateRepository<BankAccount> for BankAccountRepository {
 
 fn serialize_events<A: Aggregate>(
     envelopes: &[EventEnvelope<A>],
-    aggregate_id: &str,
     start_sequence: usize,
 ) -> Result<Vec<SerializedEvent>> {
     envelopes
         .iter()
         .enumerate()
-        .map(|(i, env)| SerializedEvent::from_envelope(env, aggregate_id, start_sequence + i))
+        .map(|(i, env)| SerializedEvent::from_envelope(env, start_sequence + i))
         .collect()
 }
 
@@ -410,7 +406,7 @@ async fn main() -> Result<()> {
         .execute(
             &account_id,
             BankAccountCommand::Deposit { amount: 1000 },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await?;
     println!("✅ 存款 +1000, 产生 {} 个事件", events.len());
@@ -420,20 +416,28 @@ async fn main() -> Result<()> {
         .execute(
             &account_id,
             BankAccountCommand::Withdraw { amount: 300 },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await?;
     println!("✅ 取款 -300, 产生 {} 个事件", events.len());
 
     // 锁定账户
     let events = root
-        .execute(&account_id, BankAccountCommand::Lock, Metadata::default())
+        .execute(
+            &account_id,
+            BankAccountCommand::Lock,
+            BusinessContext::default(),
+        )
         .await?;
     println!("✅ 锁定账户, 产生 {} 个事件", events.len());
 
     // 解锁账户
     let events = root
-        .execute(&account_id, BankAccountCommand::Unlock, Metadata::default())
+        .execute(
+            &account_id,
+            BankAccountCommand::Unlock,
+            BusinessContext::default(),
+        )
         .await?;
     println!("✅ 解锁账户, 产生 {} 个事件\n", events.len());
 
@@ -463,7 +467,7 @@ async fn main() -> Result<()> {
 
     // 使用 AggregateRepository 重新加载聚合
     println!("\n--- 使用 AggregateRepository 重新加载聚合 ---");
-    let loaded_account = repo.load_aggregate(&account_id).await?.unwrap();
+    let loaded_account = repo.load(&account_id).await?.unwrap();
     println!(
         "账户ID: {}, 余额: {}, 版本: {}, 锁定: {}",
         loaded_account.id(),

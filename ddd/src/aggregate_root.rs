@@ -1,7 +1,7 @@
 use crate::{
     aggregate::Aggregate,
     aggregate_repository::AggragateRepository,
-    domain_event::{EventEnvelope, Metadata},
+    domain_event::{BusinessContext, EventEnvelope},
 };
 use anyhow::Result;
 use std::marker::PhantomData;
@@ -31,21 +31,17 @@ where
         &self,
         aggregate_id: &A::Id,
         command: A::Command,
-        metadata: Metadata,
+        context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<A>>> {
         // 从仓库加载聚合
-        let loaded = self
-            .repo
-            .load_aggregate(aggregate_id.as_ref())
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to load aggregate {} with id {}: {}",
-                    A::TYPE,
-                    aggregate_id,
-                    e
-                )
-            })?;
+        let loaded = self.repo.load(aggregate_id.as_ref()).await.map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load aggregate {} with id {}: {}",
+                A::TYPE,
+                aggregate_id,
+                e
+            )
+        })?;
 
         // 如果不存在则创建新的聚合实例
         let mut aggregate = match loaded {
@@ -71,7 +67,7 @@ where
         // 保存聚合状态和未提交的事件
         let event_envelopes = self
             .repo
-            .commit(&aggregate, events, metadata)
+            .save(&aggregate, events, context)
             .await
             .map_err(|e| {
                 anyhow::anyhow!(

@@ -7,7 +7,7 @@ use chrono;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
+use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
 use ddd::event_repository::EventRepository;
 use ddd::snapshot_repository::SnapshotRepository;
 use ddd_macros::{aggregate, event};
@@ -367,6 +367,7 @@ pub struct SerializedEvent {
     pub sequence: usize,
     pub metadata: Value,
     pub payload: Value,
+    pub context: Value,
 }
 
 // ============================================================================
@@ -410,8 +411,8 @@ impl EventRepository for InMemoryEventRepository {
             .unwrap_or_else(Vec::new))
     }
 
-    /// 提交事件到仓储
-    fn commit<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+    /// 保存事件到仓储
+    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -444,11 +445,10 @@ impl SnapshotRepository for InMemorySnapshotRepository {
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
-        aggregate_type: &str,
         version: Option<usize>,
     ) -> Result<Option<Self::SerializedSnapshot>> {
         let snapshots = self.snapshots.lock().unwrap();
-        let key = (aggregate_type.to_string(), aggregate_id.to_string());
+        let key = (A::TYPE.to_string(), aggregate_id.to_string());
 
         if let Some(snaps) = snapshots.get(&key) {
             match version {
@@ -470,8 +470,8 @@ impl SnapshotRepository for InMemorySnapshotRepository {
         }
     }
 
-    /// 提交快照
-    fn commit<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+    /// 保存快照
+    fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
         let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
         let mut snapshots = self.snapshots.lock().unwrap();
 
@@ -506,36 +506,11 @@ impl OrderRepository {
 
 #[async_trait]
 impl AggragateRepository<OrderAggregate> for OrderRepository {
-    async fn load_events(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<AggregateEvents<OrderAggregate>, OrderError> {
-        let serialized = self
-            .event_repo
-            .get_events::<OrderAggregate>(aggregate_id)
-            .await?;
-
-        // 将 SerializedEvent 转换为 EventEnvelope
-        let envelopes: Vec<EventEnvelope<OrderAggregate>> = serialized
-            .iter()
-            .filter_map(|se| {
-                let metadata: Metadata = serde_json::from_value(se.metadata.clone()).ok()?;
-                let payload: OrderEvent = serde_json::from_value(se.payload.clone()).ok()?;
-                Some(EventEnvelope::new(metadata, payload))
-            })
-            .collect();
-
-        Ok(AggregateEvents::new(envelopes))
-    }
-
-    async fn load_aggregate(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Option<OrderAggregate>, OrderError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, OrderError> {
         // 1. 尝试从快照加载
         if let Some(snapshot) = self
             .snapshot_repo
-            .get_snapshot::<OrderAggregate>(aggregate_id, OrderAggregate::TYPE, None)
+            .get_snapshot::<OrderAggregate>(aggregate_id, None)
             .await?
         {
             let mut order: OrderAggregate = snapshot.to_aggregate()?;
@@ -557,27 +532,35 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
         }
 
         // 3. 没有快照，从事件重建
-        let events = self.load_events(aggregate_id).await?;
-        if events.is_empty() {
+        let serialized = self
+            .event_repo
+            .get_events::<OrderAggregate>(aggregate_id)
+            .await?;
+
+        if serialized.is_empty() {
             return Ok(None);
         }
 
+        // 将 SerializedEvent 转换为 EventEnvelope 并应用到聚合
         let mut order = OrderAggregate::new(aggregate_id.to_string());
-        for envelope in events.iter() {
-            order.apply(&envelope.payload);
+        for se in serialized.iter() {
+            if let Ok(payload) = serde_json::from_value::<OrderEvent>(se.payload.clone()) {
+                order.apply(&payload);
+            }
         }
+
         Ok(Some(order))
     }
 
-    async fn commit(
+    async fn save(
         &self,
         aggregate: &OrderAggregate,
         events: Vec<OrderEvent>,
-        metadata: Metadata,
+        context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<OrderAggregate>>, OrderError> {
         let envelopes: Vec<EventEnvelope<OrderAggregate>> = events
             .into_iter()
-            .map(|e| EventEnvelope::new(metadata.clone(), e))
+            .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
 
         // 序列化并保存到 EventRepository
@@ -590,18 +573,24 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
         let serialized: Vec<SerializedEvent> = envelopes
             .iter()
             .enumerate()
-            .map(|(i, env)| SerializedEvent {
-                aggregate_id: aggregate.id().to_string(),
-                aggregate_type: OrderAggregate::TYPE.to_string(),
-                event_type: env.payload.event_type(),
-                event_version: env.payload.event_version(),
-                sequence: last_seq + i + 1,
-                metadata: serde_json::to_value(&env.metadata).unwrap(),
-                payload: serde_json::to_value(&env.payload).unwrap(),
+            .map(|(i, env)| {
+                let metadata_value = serde_json::to_value(&env.metadata).unwrap();
+                let metadata_map = metadata_value.as_object().unwrap();
+
+                SerializedEvent {
+                    aggregate_id: metadata_map["aggregate_id"].as_str().unwrap().to_string(),
+                    aggregate_type: metadata_map["aggregate_type"].as_str().unwrap().to_string(),
+                    event_type: env.payload.event_type(),
+                    event_version: env.payload.event_version(),
+                    sequence: last_seq + i + 1,
+                    metadata: metadata_value,
+                    payload: serde_json::to_value(&env.payload).unwrap(),
+                    context: serde_json::to_value(&env.context).unwrap(),
+                }
             })
             .collect();
 
-        self.event_repo.commit::<OrderAggregate>(&serialized)?;
+        self.event_repo.save::<OrderAggregate>(&serialized)?;
 
         Ok(envelopes)
     }
@@ -635,7 +624,7 @@ async fn main() -> Result<()> {
                 quantity,
                 price,
             },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await?;
         println!(
@@ -652,47 +641,47 @@ async fn main() -> Result<()> {
         OrderCommand::RemoveItem {
             product_id: "product-C".to_string(),
         },
-        Metadata::default(),
+        BusinessContext::default(),
     )
     .await?;
     println!("✅ 移除商品: product-C");
 
     // 加载当前状态并保存快照
-    let order = repo.load_aggregate(&order_id).await?.unwrap();
-    snapshot_repo.commit(&order)?;
+    let order = repo.load(&order_id).await?.unwrap();
+    snapshot_repo.save(&order)?;
     println!("\n📸 保存快照 v{}", order.version());
 
     // 继续订单流程
     println!("\n--- 订单状态流转 ---");
-    root.execute(&order_id, OrderCommand::Confirm, Metadata::default())
+    root.execute(&order_id, OrderCommand::Confirm, BusinessContext::default())
         .await?;
     println!("✅ 确认订单");
 
-    root.execute(&order_id, OrderCommand::Pay, Metadata::default())
+    root.execute(&order_id, OrderCommand::Pay, BusinessContext::default())
         .await?;
     println!("✅ 支付订单");
 
     // 保存第二个快照
-    let order = repo.load_aggregate(&order_id).await?.unwrap();
-    snapshot_repo.commit(&order)?;
+    let order = repo.load(&order_id).await?.unwrap();
+    snapshot_repo.save(&order)?;
     println!("\n📸 保存快照 v{}", order.version());
 
-    root.execute(&order_id, OrderCommand::Ship, Metadata::default())
+    root.execute(&order_id, OrderCommand::Ship, BusinessContext::default())
         .await?;
     println!("✅ 发货订单");
 
     // 保存第三个快照
-    let order = repo.load_aggregate(&order_id).await?.unwrap();
-    snapshot_repo.commit(&order)?;
+    let order = repo.load(&order_id).await?.unwrap();
+    snapshot_repo.save(&order)?;
     println!("\n📸 保存快照 v{}", order.version());
 
-    root.execute(&order_id, OrderCommand::Deliver, Metadata::default())
+    root.execute(&order_id, OrderCommand::Deliver, BusinessContext::default())
         .await?;
     println!("✅ 签收订单");
 
     // 保存第四个快照
-    let order = repo.load_aggregate(&order_id).await?.unwrap();
-    snapshot_repo.commit(&order)?;
+    let order = repo.load(&order_id).await?.unwrap();
+    snapshot_repo.save(&order)?;
     println!("\n📸 保存快照 v{}", order.version());
 
     // 演示快照查询
@@ -700,7 +689,7 @@ async fn main() -> Result<()> {
 
     // 获取最新快照
     if let Some(snapshot) = snapshot_repo
-        .get_snapshot::<OrderAggregate>(&order_id, OrderAggregate::TYPE, None)
+        .get_snapshot::<OrderAggregate>(&order_id, None)
         .await?
     {
         println!("最新快照: 版本={}", snapshot.version);
@@ -715,7 +704,7 @@ async fn main() -> Result<()> {
 
     // 获取指定版本的快照
     if let Some(snapshot) = snapshot_repo
-        .get_snapshot::<OrderAggregate>(&order_id, OrderAggregate::TYPE, Some(4))
+        .get_snapshot::<OrderAggregate>(&order_id, Some(4))
         .await?
     {
         println!("\n查询版本4的快照: 实际返回版本={}", snapshot.version);
@@ -730,7 +719,7 @@ async fn main() -> Result<()> {
 
     // 使用 AggregateRepository 重新加载（利用快照优化）
     println!("\n--- 使用 AggregateRepository 加载聚合（自动使用快照）---");
-    let loaded = repo.load_aggregate(&order_id).await?.unwrap();
+    let loaded = repo.load(&order_id).await?.unwrap();
     println!(
         "订单ID: {}, 状态: {:?}, 总金额: {}, 版本: {}",
         loaded.id(),
@@ -749,16 +738,20 @@ async fn main() -> Result<()> {
             quantity: 1,
             price: 100,
         },
-        Metadata::default(),
+        BusinessContext::default(),
     )
     .await?;
     println!("✅ 创建订单 order-002 并添加商品");
 
-    root.execute(&order_id_2, OrderCommand::Cancel, Metadata::default())
-        .await?;
+    root.execute(
+        &order_id_2,
+        OrderCommand::Cancel,
+        BusinessContext::default(),
+    )
+    .await?;
     println!("✅ 取消订单 order-002");
 
-    let cancelled_order = repo.load_aggregate(&order_id_2).await?.unwrap();
+    let cancelled_order = repo.load(&order_id_2).await?.unwrap();
     println!(
         "订单ID: {}, 状态: {:?}",
         cancelled_order.id(),

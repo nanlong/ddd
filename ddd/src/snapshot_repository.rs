@@ -9,9 +9,8 @@ pub trait SnapshotRepository: Send + Sync {
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
-        aggregate_type: &str,
         version: Option<usize>,
     ) -> Result<Option<Self::SerializedSnapshot>>;
 
-    fn commit<A: Aggregate>(&self, aggregate: &A) -> Result<()>;
+    fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()>;
 }

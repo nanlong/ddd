@@ -2,7 +2,7 @@ use crate::aggregate::Aggregate;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{collections::HashMap, fmt, slice::Iter, vec::IntoIter};
+use std::{fmt, slice::Iter, vec::IntoIter};
 
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
@@ -12,19 +12,21 @@ pub trait DomainEvent:
     fn event_version(&self) -> usize;
 }
 
-/// 事件元数据
-/// 包含事件的关联信息，如关联ID、因果ID、触发者等
-/// 一般来说，这些信息由interface层（如API网关、消息消费者等）的请求上下文中提取
+/// 元数据
 #[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     aggregate_id: String,
     aggregate_type: String,
     occurred_at: DateTime<Utc>,
+}
+
+/// 业务上下文信息
+#[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessContext {
     correlation_id: Option<String>,
     causation_id: Option<String>,
     actor_type: Option<String>,
     actor_id: Option<String>,
-    data: HashMap<String, String>,
 }
 
 /// 事件信封，包含事件及其元数据
@@ -35,20 +37,32 @@ where
 {
     pub metadata: Metadata,
     pub payload: A::Event,
+    pub context: BusinessContext,
 }
 
 impl<A> EventEnvelope<A>
 where
     A: Aggregate,
 {
-    pub fn new(metadata: Metadata, payload: A::Event) -> Self {
-        Self { metadata, payload }
+    pub fn new(aggregate_id: &A::Id, payload: A::Event, context: BusinessContext) -> Self {
+        let metadata = Metadata::builder()
+            .aggregate_id(aggregate_id.to_string())
+            .aggregate_type(A::TYPE.to_string())
+            .occurred_at(Utc::now())
+            .build();
+
+        Self {
+            metadata,
+            payload,
+            context,
+        }
     }
 }
 
 pub struct SerializedEvent {
     metadata: serde_json::Value,
     payload: serde_json::Value,
+    context: serde_json::Value,
 }
 
 impl<A> TryFrom<SerializedEvent> for EventEnvelope<A>
@@ -60,7 +74,13 @@ where
     fn try_from(value: SerializedEvent) -> Result<Self, Self::Error> {
         let metadata: Metadata = serde_json::from_value(value.metadata)?;
         let payload: A::Event = serde_json::from_value(value.payload)?;
-        Ok(Self { metadata, payload })
+        let context: BusinessContext = serde_json::from_value(value.context)?;
+
+        Ok(Self {
+            metadata,
+            payload,
+            context,
+        })
     }
 }
 
@@ -82,14 +102,12 @@ where
 
     /// 获取创建者ID（第一个事件的触发者）
     pub fn created_by(&self) -> Option<String> {
-        self.events
-            .first()
-            .and_then(|e| e.metadata.actor_id.clone())
+        self.events.first().and_then(|e| e.context.actor_id.clone())
     }
 
     /// 获取最后修改者ID（最后一个事件的触发者）
     pub fn last_modified_by(&self) -> Option<String> {
-        self.events.last().and_then(|e| e.metadata.actor_id.clone())
+        self.events.last().and_then(|e| e.context.actor_id.clone())
     }
 
     /// 获取创建时间（第一个事件的发生时间）

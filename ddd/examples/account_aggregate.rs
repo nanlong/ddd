@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_repository::AggragateRepository;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
+use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -174,16 +174,7 @@ struct InMemoryAccountRepo {
 
 #[async_trait]
 impl AggragateRepository<Account> for InMemoryAccountRepo {
-    async fn load_events(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<AggregateEvents<Account>, AccountError> {
-        let store = self.inner.lock().unwrap();
-        let events = store.get(aggregate_id).cloned().unwrap_or_else(Vec::new);
-        Ok(AggregateEvents::new(events))
-    }
-
-    async fn load_aggregate(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
             let mut acc = Account::new(aggregate_id.parse()?);
@@ -196,17 +187,17 @@ impl AggragateRepository<Account> for InMemoryAccountRepo {
         }
     }
 
-    async fn commit(
+    async fn save(
         &self,
         aggregate: &Account,
         events: Vec<AccountEvent>,
-        metadata: Metadata,
+        context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<Account>>, AccountError> {
         let mut store = self.inner.lock().unwrap();
         let entry = store.entry(aggregate.id().to_string()).or_default();
         let mut out = Vec::with_capacity(events.len());
         for e in events {
-            let env = EventEnvelope::<Account>::new(metadata.clone(), e);
+            let env = EventEnvelope::<Account>::new(aggregate.id(), e, context.clone());
             entry.push(env.clone());
             out.push(env);
         }
@@ -227,7 +218,7 @@ async fn main() {
             AccountCommand::Open {
                 initial_balance: 1000,
             },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await
         .unwrap();
@@ -239,7 +230,7 @@ async fn main() {
         .execute(
             &id,
             AccountCommand::Deposit { amount: 500 },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await
         .unwrap();
@@ -251,7 +242,7 @@ async fn main() {
         .execute(
             &id,
             AccountCommand::Withdraw { amount: 200 },
-            Metadata::default(),
+            BusinessContext::default(),
         )
         .await
         .unwrap();
@@ -259,7 +250,7 @@ async fn main() {
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
-    let loaded = repo.load_aggregate(&id).await.unwrap().unwrap();
+    let loaded = repo.load(&id).await.unwrap().unwrap();
     println!(
         "reloaded: id={}, balance={}, version={}",
         loaded.id(),
