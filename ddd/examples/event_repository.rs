@@ -232,7 +232,7 @@ impl EventRepository for InMemoryEventRepository {
             .get(aggregate_id)
             .map(|evts| {
                 evts.iter()
-                    .filter(|e| e.event_version() > last_version)
+                    .filter(|e| e.aggregate_version() > last_version)
                     .cloned()
                     .collect()
             })

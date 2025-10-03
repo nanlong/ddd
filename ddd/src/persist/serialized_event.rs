@@ -11,25 +11,37 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
 pub struct SerializedEvent {
-    aggregate_id: String,
-    aggregate_type: String,
+    /// 事件唯一标识符
+    event_id: String,
+    /// 事件类型，用于区分不同的事件
     event_type: String,
+    /// 事件版本，用于事件版本控制和升级
     event_version: usize,
+    /// 全局事件位点，由存储层在持久化后赋值
+    sequence_number: Option<i64>,
+    /// 聚合 ID，标识事件所属的聚合根实例
+    aggregate_id: String,
+    /// 聚合类型，用于区分不同的聚合根
+    aggregate_type: String,
+    /// 聚合版本，用于乐观锁和并发控制
+    aggregate_version: usize,
+    /// 关联 ID，用于将多个事件关联到同一个业务操作
     correlation_id: Option<String>,
+    /// 因果 ID，用于表示事件的触发来源
     causation_id: Option<String>,
+    /// 触发事件的主体类型（如用户、系统等）
     actor_type: Option<String>,
+    /// 触发事件的主体 ID
     actor_id: Option<String>,
+    /// 事件发生时间
     occurred_at: DateTime<Utc>,
+    /// 事件负载，存储事件的具体数据
     payload: Value,
 }
 
 impl SerializedEvent {
-    pub fn aggregate_id(&self) -> &str {
-        &self.aggregate_id
-    }
-
-    pub fn aggregate_type(&self) -> &str {
-        &self.aggregate_type
+    pub fn event_id(&self) -> &str {
+        &self.event_id
     }
 
     pub fn event_type(&self) -> &str {
@@ -38,6 +50,22 @@ impl SerializedEvent {
 
     pub fn event_version(&self) -> usize {
         self.event_version
+    }
+
+    pub fn sequence_number(&self) -> Option<i64> {
+        self.sequence_number
+    }
+
+    pub fn aggregate_id(&self) -> &str {
+        &self.aggregate_id
+    }
+
+    pub fn aggregate_type(&self) -> &str {
+        &self.aggregate_type
+    }
+
+    pub fn aggregate_version(&self) -> usize {
+        self.aggregate_version
     }
 
     pub fn correlation_id(&self) -> Option<&str> {
@@ -72,17 +100,34 @@ where
     type Error = serde_json::Error;
 
     fn try_from(envelope: &EventEnvelope<A>) -> Result<Self, Self::Error> {
+        let payload_value = serde_json::to_value(&envelope.payload)?;
+
+        let event_id = payload_value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let aggregate_version = payload_value
+            .get("version")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(0);
+
         Ok(SerializedEvent {
-            aggregate_id: envelope.metadata.aggregate_id().to_string(),
-            aggregate_type: envelope.metadata.aggregate_type().to_string(),
+            event_id,
             event_type: envelope.payload.event_type(),
             event_version: envelope.payload.event_version(),
+            sequence_number: None,
+            aggregate_id: envelope.metadata.aggregate_id().to_string(),
+            aggregate_type: envelope.metadata.aggregate_type().to_string(),
+            aggregate_version,
             correlation_id: envelope.context.correlation_id().map(|s| s.to_string()),
             causation_id: envelope.context.causation_id().map(|s| s.to_string()),
             actor_type: envelope.context.actor_type().map(|s| s.to_string()),
             actor_id: envelope.context.actor_id().map(|s| s.to_string()),
             occurred_at: envelope.metadata.occurred_at().clone(),
-            payload: serde_json::to_value(&envelope.payload)?,
+            payload: payload_value,
         })
     }
 }

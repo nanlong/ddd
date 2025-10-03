@@ -208,15 +208,18 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
         }
 
         let upgraded = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
             .event_version(2) // 升级到 v2
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(payload)
             .build();
 
@@ -257,15 +260,18 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
         }
 
         let upgraded = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
             .event_version(3) // 升级到 v3
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(payload)
             .build();
 
@@ -299,23 +305,26 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
 
         let deposited_payload = serde_json::json!({
             "account.deposited": {
-                "id": Ulid::new().to_string(),
-                "version": 0,
+                "id": event.event_id(),
+                "version": event.aggregate_version(),
                 "minor_units": minor_units,
                 "currency": currency,
             }
         });
 
         let deposited_event = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type("account.deposited".to_string())
             .event_version(4)
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(deposited_payload)
             .build();
 
@@ -352,15 +361,18 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
         }
 
         let upgraded = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
             .event_version(2)
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(payload)
             .build();
 
@@ -400,15 +412,18 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
         }
 
         let upgraded = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
             .event_version(3)
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(payload)
             .build();
 
@@ -442,23 +457,26 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
 
         let withdrew_payload = serde_json::json!({
             "account.withdrew": {
-                "id": Ulid::new().to_string(),
-                "version": 0,
+                "id": event.event_id(),
+                "version": event.aggregate_version(),
                 "minor_units": minor_units,
                 "currency": currency,
             }
         });
 
         let withdrew_event = SerializedEvent::builder()
-            .aggregate_id(event.aggregate_id().to_string())
-            .aggregate_type(event.aggregate_type().to_string())
+            .event_id(event.event_id().to_string())
             .event_type("account.withdrew".to_string())
             .event_version(4)
-            .occurred_at(event.occurred_at())
+            .maybe_sequence_number(None)
+            .aggregate_id(event.aggregate_id().to_string())
+            .aggregate_type(event.aggregate_type().to_string())
+            .aggregate_version(event.aggregate_version())
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .occurred_at(event.occurred_at())
             .payload(withdrew_payload)
             .build();
 
@@ -478,25 +496,56 @@ fn create_deposit(
     cents: Option<i64>,
     currency: Option<&str>,
 ) -> SerializedEvent {
+    let eid = Ulid::new().to_string();
+    let aver: usize = 0;
     let (event_type, payload) = match ver {
-        1 => ("account.credited", serde_json::json!({"amount": yuan.unwrap()})),
-        2 => ("account.credited", serde_json::json!({"amount": yuan.unwrap(), "currency": currency.unwrap()})),
-        3 => ("account.credited", serde_json::json!({"minor_units": cents.unwrap(), "currency": currency.unwrap()})),
-        4 => ("account.deposited", serde_json::json!({
-            "account.deposited": {
-                "id": Ulid::new().to_string(),
-                "version": 0,
+        1 => (
+            "account.credited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
+                "amount": yuan.unwrap()
+            }),
+        ),
+        2 => (
+            "account.credited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
+                "amount": yuan.unwrap(),
+                "currency": currency.unwrap()
+            }),
+        ),
+        3 => (
+            "account.credited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
                 "minor_units": cents.unwrap(),
                 "currency": currency.unwrap()
-            }
-        })),
+            }),
+        ),
+        4 => (
+            "account.deposited",
+            serde_json::json!({
+                "account.deposited": {
+                    "id": eid,
+                    "version": aver,
+                    "minor_units": cents.unwrap(),
+                    "currency": currency.unwrap()
+                }
+            }),
+        ),
         _ => panic!("Unsupported version"),
     };
     SerializedEvent::builder()
-        .aggregate_id(id.to_string())
-        .aggregate_type("bank_account".to_string())
+        .event_id(eid)
         .event_type(event_type.to_string())
         .event_version(ver)
+        .maybe_sequence_number(None)
+        .aggregate_id(id.to_string())
+        .aggregate_type("bank_account".to_string())
+        .aggregate_version(aver)
         .occurred_at(chrono::Utc::now())
         .payload(payload)
         .build()
@@ -510,25 +559,56 @@ fn create_withdraw(
     cents: Option<i64>,
     currency: Option<&str>,
 ) -> SerializedEvent {
+    let eid = Ulid::new().to_string();
+    let aver: usize = 0;
     let (event_type, payload) = match ver {
-        1 => ("account.debited", serde_json::json!({"amount": yuan.unwrap()})),
-        2 => ("account.debited", serde_json::json!({"amount": yuan.unwrap(), "currency": currency.unwrap()})),
-        3 => ("account.debited", serde_json::json!({"minor_units": cents.unwrap(), "currency": currency.unwrap()})),
-        4 => ("account.withdrew", serde_json::json!({
-            "account.withdrew": {
-                "id": Ulid::new().to_string(),
-                "version": 0,
+        1 => (
+            "account.debited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
+                "amount": yuan.unwrap()
+            }),
+        ),
+        2 => (
+            "account.debited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
+                "amount": yuan.unwrap(),
+                "currency": currency.unwrap()
+            }),
+        ),
+        3 => (
+            "account.debited",
+            serde_json::json!({
+                "id": eid,
+                "version": aver,
                 "minor_units": cents.unwrap(),
                 "currency": currency.unwrap()
-            }
-        })),
+            }),
+        ),
+        4 => (
+            "account.withdrew",
+            serde_json::json!({
+                "account.withdrew": {
+                    "id": eid,
+                    "version": aver,
+                    "minor_units": cents.unwrap(),
+                    "currency": currency.unwrap()
+                }
+            }),
+        ),
         _ => panic!("Unsupported version"),
     };
     SerializedEvent::builder()
-        .aggregate_id(id.to_string())
-        .aggregate_type("bank_account".to_string())
+        .event_id(eid)
         .event_type(event_type.to_string())
         .event_version(ver)
+        .maybe_sequence_number(None)
+        .aggregate_id(id.to_string())
+        .aggregate_type("bank_account".to_string())
+        .aggregate_version(aver)
         .occurred_at(chrono::Utc::now())
         .payload(payload)
         .build()
@@ -556,19 +636,19 @@ fn main() -> Result<()> {
     println!("原始事件（混合版本）:");
     let serialized_events = vec![
         // 早期事件 (v1)
-        create_deposit(account_id, 1, Some(100), None, None),            // v1: 存入 100 元
-        create_withdraw(account_id, 1, Some(30), None, None),            // v1: 取出 30 元
+        create_deposit(account_id, 1, Some(100), None, None), // v1: 存入 100 元
+        create_withdraw(account_id, 1, Some(30), None, None), // v1: 取出 30 元
         // 添加货币字段后 (v2)
-        create_deposit(account_id, 2, Some(50), None, Some("CNY")),      // v2: 存入 50 元
-        create_withdraw(account_id, 2, Some(20), None, Some("CNY")),     // v2: 取出 20 元
-        create_withdraw(account_id, 2, Some(5), None, Some("CNY")),      // v2: 取出 5 元
+        create_deposit(account_id, 2, Some(50), None, Some("CNY")), // v2: 存入 50 元
+        create_withdraw(account_id, 2, Some(20), None, Some("CNY")), // v2: 取出 20 元
+        create_withdraw(account_id, 2, Some(5), None, Some("CNY")), // v2: 取出 5 元
         // 改用分作为单位后 (v3)
-        create_deposit(account_id, 3, None, Some(8000), Some("CNY")),    // v3: 存入 80 元 (8000分)
-        create_withdraw(account_id, 3, None, Some(1000), Some("CNY")),   // v3: 取出 10 元 (1000分)
-        create_deposit(account_id, 3, None, Some(2000), Some("CNY")),    // v3: 存入 20 元 (2000分)
+        create_deposit(account_id, 3, None, Some(8000), Some("CNY")), // v3: 存入 80 元 (8000分)
+        create_withdraw(account_id, 3, None, Some(1000), Some("CNY")), // v3: 取出 10 元 (1000分)
+        create_deposit(account_id, 3, None, Some(2000), Some("CNY")), // v3: 存入 20 元 (2000分)
         // 最新版本 (v4 - 重命名事件)
-        create_deposit(account_id, 4, None, Some(5000), Some("CNY")),    // v4: 存入 50 元 (5000分)
-        create_withdraw(account_id, 4, None, Some(3000), Some("CNY")),   // v4: 取出 30 元 (3000分)
+        create_deposit(account_id, 4, None, Some(5000), Some("CNY")), // v4: 存入 50 元 (5000分)
+        create_withdraw(account_id, 4, None, Some(3000), Some("CNY")), // v4: 取出 30 元 (3000分)
     ];
 
     for (i, se) in serialized_events.iter().enumerate() {
