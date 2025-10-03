@@ -23,3 +23,11 @@ path = "examples/event_upcasting.rs"
 [[example]]
 name = "account_aggregate"
 path = "examples/account_aggregate.rs"
+
+[[example]]
+name = "event_repository"
+path = "examples/event_repository.rs"
+
+[[example]]
+name = "snapshot_repository"
+path = "examples/snapshot_repository.rs"

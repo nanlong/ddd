@@ -1,0 +1,788 @@
+/// SnapshotRepository 示例
+/// 演示如何实现快照仓储接口，用于优化事件溯源性能
+/// 快照机制可以避免重放大量历史事件，直接从快照恢复聚合状态
+use anyhow::Result;
+use async_trait::async_trait;
+use chrono;
+use ddd::aggregate::Aggregate;
+use ddd::aggregate_repository::AggragateRepository;
+use ddd::aggregate_root::AggregateRoot;
+use ddd::domain_event::{AggregateEvents, DomainEvent, EventEnvelope, Metadata};
+use ddd::event_repository::EventRepository;
+use ddd::snapshot_repository::SnapshotRepository;
+use ddd_macros::{aggregate, event};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::sync::{Arc, Mutex};
+use ulid::Ulid;
+
+// ============================================================================
+// 领域模型定义
+// ============================================================================
+
+#[aggregate]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct OrderAggregate {
+    status: OrderStatus,
+    total_amount: i64,
+    items: Vec<OrderItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+enum OrderStatus {
+    Draft,
+    Confirmed,
+    Paid,
+    Shipped,
+    Delivered,
+    Cancelled,
+}
+
+impl Default for OrderStatus {
+    fn default() -> Self {
+        Self::Draft
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OrderItem {
+    product_id: String,
+    quantity: u32,
+    price: i64,
+}
+
+#[derive(Debug)]
+enum OrderError {
+    InvalidId(String),
+    InvalidStatus,
+    ItemNotFound,
+    InvalidQuantity,
+}
+
+impl Display for OrderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidId(msg) => write!(f, "invalid order id: {}", msg),
+            Self::InvalidStatus => write!(f, "invalid order status"),
+            Self::ItemNotFound => write!(f, "item not found"),
+            Self::InvalidQuantity => write!(f, "invalid quantity"),
+        }
+    }
+}
+
+impl std::error::Error for OrderError {}
+
+impl From<std::string::ParseError> for OrderError {
+    fn from(_: std::string::ParseError) -> Self {
+        Self::InvalidId("parse error".to_string())
+    }
+}
+
+impl From<anyhow::Error> for OrderError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::InvalidId(err.to_string())
+    }
+}
+
+#[derive(Debug)]
+enum OrderCommand {
+    AddItem {
+        product_id: String,
+        quantity: u32,
+        price: i64,
+    },
+    RemoveItem {
+        product_id: String,
+    },
+    Confirm,
+    Pay,
+    Ship,
+    Deliver,
+    Cancel,
+}
+
+#[event]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+enum OrderEvent {
+    ItemAdded {
+        product_id: String,
+        quantity: u32,
+        price: i64,
+    },
+    ItemRemoved {
+        product_id: String,
+    },
+    Confirmed {
+        confirmed_at: i64,
+    },
+    Paid {
+        paid_at: i64,
+    },
+    Shipped {
+        shipped_at: i64,
+    },
+    Delivered {
+        delivered_at: i64,
+    },
+    Cancelled {
+        cancelled_at: i64,
+    },
+}
+
+impl DomainEvent for OrderEvent {
+    fn event_type(&self) -> String {
+        match self {
+            OrderEvent::ItemAdded { .. } => "order.item_added",
+            OrderEvent::ItemRemoved { .. } => "order.item_removed",
+            OrderEvent::Confirmed { .. } => "order.confirmed",
+            OrderEvent::Paid { .. } => "order.paid",
+            OrderEvent::Shipped { .. } => "order.shipped",
+            OrderEvent::Delivered { .. } => "order.delivered",
+            OrderEvent::Cancelled { .. } => "order.cancelled",
+        }
+        .to_string()
+    }
+
+    fn event_version(&self) -> usize {
+        match self {
+            OrderEvent::ItemAdded { version, .. }
+            | OrderEvent::ItemRemoved { version, .. }
+            | OrderEvent::Confirmed { version, .. }
+            | OrderEvent::Paid { version, .. }
+            | OrderEvent::Shipped { version, .. }
+            | OrderEvent::Delivered { version, .. }
+            | OrderEvent::Cancelled { version, .. } => *version,
+        }
+    }
+}
+
+impl Aggregate for OrderAggregate {
+    const TYPE: &'static str = "order";
+
+    type Id = String;
+    type Command = OrderCommand;
+    type Event = OrderEvent;
+    type Error = OrderError;
+
+    fn new(aggregate_id: Self::Id) -> Self {
+        Self {
+            id: aggregate_id,
+            version: 0,
+            status: OrderStatus::Draft,
+            total_amount: 0,
+            items: Vec::new(),
+        }
+    }
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn version(&self) -> usize {
+        self.version
+    }
+
+    fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
+        match command {
+            OrderCommand::AddItem {
+                product_id,
+                quantity,
+                price,
+            } => {
+                if quantity == 0 {
+                    return Err(OrderError::InvalidQuantity);
+                }
+                if self.status != OrderStatus::Draft {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::ItemAdded {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    product_id,
+                    quantity,
+                    price,
+                }])
+            }
+            OrderCommand::RemoveItem { product_id } => {
+                if self.status != OrderStatus::Draft {
+                    return Err(OrderError::InvalidStatus);
+                }
+                if !self.items.iter().any(|item| item.product_id == product_id) {
+                    return Err(OrderError::ItemNotFound);
+                }
+                Ok(vec![OrderEvent::ItemRemoved {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    product_id,
+                }])
+            }
+            OrderCommand::Confirm => {
+                if self.status != OrderStatus::Draft {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::Confirmed {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    confirmed_at: chrono::Utc::now().timestamp(),
+                }])
+            }
+            OrderCommand::Pay => {
+                if self.status != OrderStatus::Confirmed {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::Paid {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    paid_at: chrono::Utc::now().timestamp(),
+                }])
+            }
+            OrderCommand::Ship => {
+                if self.status != OrderStatus::Paid {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::Shipped {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    shipped_at: chrono::Utc::now().timestamp(),
+                }])
+            }
+            OrderCommand::Deliver => {
+                if self.status != OrderStatus::Shipped {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::Delivered {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    delivered_at: chrono::Utc::now().timestamp(),
+                }])
+            }
+            OrderCommand::Cancel => {
+                if matches!(self.status, OrderStatus::Delivered | OrderStatus::Cancelled) {
+                    return Err(OrderError::InvalidStatus);
+                }
+                Ok(vec![OrderEvent::Cancelled {
+                    id: Ulid::new().to_string(),
+                    version: self.version() + 1,
+                    cancelled_at: chrono::Utc::now().timestamp(),
+                }])
+            }
+        }
+    }
+
+    fn apply(&mut self, event: &Self::Event) {
+        match event {
+            OrderEvent::ItemAdded {
+                version,
+                product_id,
+                quantity,
+                price,
+                ..
+            } => {
+                self.items.push(OrderItem {
+                    product_id: product_id.clone(),
+                    quantity: *quantity,
+                    price: *price,
+                });
+                self.total_amount += price * (*quantity as i64);
+                self.version = *version;
+            }
+            OrderEvent::ItemRemoved {
+                version,
+                product_id,
+                ..
+            } => {
+                if let Some(pos) = self.items.iter().position(|i| &i.product_id == product_id) {
+                    let item = self.items.remove(pos);
+                    self.total_amount -= item.price * (item.quantity as i64);
+                }
+                self.version = *version;
+            }
+            OrderEvent::Confirmed { version, .. } => {
+                self.status = OrderStatus::Confirmed;
+                self.version = *version;
+            }
+            OrderEvent::Paid { version, .. } => {
+                self.status = OrderStatus::Paid;
+                self.version = *version;
+            }
+            OrderEvent::Shipped { version, .. } => {
+                self.status = OrderStatus::Shipped;
+                self.version = *version;
+            }
+            OrderEvent::Delivered { version, .. } => {
+                self.status = OrderStatus::Delivered;
+                self.version = *version;
+            }
+            OrderEvent::Cancelled { version, .. } => {
+                self.status = OrderStatus::Cancelled;
+                self.version = *version;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 序列化快照定义
+// ============================================================================
+
+/// 序列化快照，用于持久化存储
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializedSnapshot {
+    pub aggregate_id: String,
+    pub aggregate_type: String,
+    pub version: usize,
+    pub payload: Value,
+    pub created_at: i64,
+}
+
+impl SerializedSnapshot {
+    fn from_aggregate<A: Aggregate>(aggregate: &A) -> Result<Self> {
+        Ok(Self {
+            aggregate_id: aggregate.id().to_string(),
+            aggregate_type: A::TYPE.to_string(),
+            version: aggregate.version(),
+            payload: serde_json::to_value(aggregate)?,
+            created_at: chrono::Utc::now().timestamp(),
+        })
+    }
+
+    fn to_aggregate<A: Aggregate>(&self) -> Result<A> {
+        Ok(serde_json::from_value(self.payload.clone())?)
+    }
+}
+
+// ============================================================================
+// 序列化事件定义
+// ============================================================================
+
+/// 序列化事件，用于持久化存储
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializedEvent {
+    pub aggregate_id: String,
+    pub aggregate_type: String,
+    pub event_type: String,
+    pub event_version: usize,
+    pub sequence: usize,
+    pub metadata: Value,
+    pub payload: Value,
+}
+
+// ============================================================================
+// 内存事件仓储实现
+// ============================================================================
+
+#[derive(Default, Clone)]
+struct InMemoryEventRepository {
+    // aggregate_id -> 事件列表
+    events: Arc<Mutex<HashMap<String, Vec<SerializedEvent>>>>,
+}
+
+#[async_trait]
+impl EventRepository for InMemoryEventRepository {
+    type SerializedEvent = SerializedEvent;
+
+    /// 获取聚合的所有事件
+    async fn get_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+    ) -> Result<Vec<Self::SerializedEvent>> {
+        let events = self.events.lock().unwrap();
+        Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
+    }
+
+    /// 获取聚合从指定版本之后的事件
+    async fn get_last_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        last_version: usize,
+    ) -> Result<Vec<Self::SerializedEvent>> {
+        let events = self.events.lock().unwrap();
+        Ok(events
+            .get(aggregate_id)
+            .map(|evts| {
+                evts.iter()
+                    .filter(|e| e.event_version > last_version)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new))
+    }
+
+    /// 提交事件到仓储
+    fn commit<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        let mut store = self.events.lock().unwrap();
+        let aggregate_id = &events[0].aggregate_id;
+
+        let entry = store.entry(aggregate_id.clone()).or_default();
+        entry.extend_from_slice(events);
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// 内存快照仓储实现
+// ============================================================================
+
+#[derive(Default, Clone)]
+struct InMemorySnapshotRepository {
+    // (aggregate_type, aggregate_id) -> 快照列表（按版本排序）
+    snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+}
+
+#[async_trait]
+impl SnapshotRepository for InMemorySnapshotRepository {
+    type SerializedSnapshot = SerializedSnapshot;
+
+    /// 获取快照，如果指定版本则获取该版本或之前的最新快照
+    async fn get_snapshot<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        aggregate_type: &str,
+        version: Option<usize>,
+    ) -> Result<Option<Self::SerializedSnapshot>> {
+        let snapshots = self.snapshots.lock().unwrap();
+        let key = (aggregate_type.to_string(), aggregate_id.to_string());
+
+        if let Some(snaps) = snapshots.get(&key) {
+            match version {
+                Some(v) => {
+                    // 找到版本 <= v 的最新快照
+                    Ok(snaps
+                        .iter()
+                        .filter(|s| s.version <= v)
+                        .max_by_key(|s| s.version)
+                        .cloned())
+                }
+                None => {
+                    // 返回最新快照
+                    Ok(snaps.last().cloned())
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// 提交快照
+    fn commit<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+        let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
+        let mut snapshots = self.snapshots.lock().unwrap();
+
+        let key = (A::TYPE.to_string(), aggregate.id().to_string());
+        let entry = snapshots.entry(key).or_default();
+
+        // 保持版本排序
+        entry.push(snapshot);
+        entry.sort_by_key(|s| s.version);
+
+        Ok(())
+    }
+}
+// ============================================================================
+// AggregateRepository 实现（整合 SnapshotRepository）
+// ============================================================================
+
+#[derive(Clone)]
+struct OrderRepository {
+    event_repo: InMemoryEventRepository,
+    snapshot_repo: InMemorySnapshotRepository,
+}
+
+impl OrderRepository {
+    fn new(event_repo: InMemoryEventRepository, snapshot_repo: InMemorySnapshotRepository) -> Self {
+        Self {
+            event_repo,
+            snapshot_repo,
+        }
+    }
+}
+
+#[async_trait]
+impl AggragateRepository<OrderAggregate> for OrderRepository {
+    async fn load_events(
+        &self,
+        aggregate_id: &str,
+    ) -> Result<AggregateEvents<OrderAggregate>, OrderError> {
+        let serialized = self
+            .event_repo
+            .get_events::<OrderAggregate>(aggregate_id)
+            .await?;
+
+        // 将 SerializedEvent 转换为 EventEnvelope
+        let envelopes: Vec<EventEnvelope<OrderAggregate>> = serialized
+            .iter()
+            .filter_map(|se| {
+                let metadata: Metadata = serde_json::from_value(se.metadata.clone()).ok()?;
+                let payload: OrderEvent = serde_json::from_value(se.payload.clone()).ok()?;
+                Some(EventEnvelope::new(metadata, payload))
+            })
+            .collect();
+
+        Ok(AggregateEvents::new(envelopes))
+    }
+
+    async fn load_aggregate(
+        &self,
+        aggregate_id: &str,
+    ) -> Result<Option<OrderAggregate>, OrderError> {
+        // 1. 尝试从快照加载
+        if let Some(snapshot) = self
+            .snapshot_repo
+            .get_snapshot::<OrderAggregate>(aggregate_id, OrderAggregate::TYPE, None)
+            .await?
+        {
+            let mut order: OrderAggregate = snapshot.to_aggregate()?;
+            let snapshot_version = snapshot.version;
+
+            // 2. 加载快照之后的增量事件
+            let incremental = self
+                .event_repo
+                .get_last_events::<OrderAggregate>(aggregate_id, snapshot_version)
+                .await?;
+
+            for se in incremental.iter() {
+                if let Ok(payload) = serde_json::from_value::<OrderEvent>(se.payload.clone()) {
+                    order.apply(&payload);
+                }
+            }
+
+            return Ok(Some(order));
+        }
+
+        // 3. 没有快照，从事件重建
+        let events = self.load_events(aggregate_id).await?;
+        if events.is_empty() {
+            return Ok(None);
+        }
+
+        let mut order = OrderAggregate::new(aggregate_id.to_string());
+        for envelope in events.iter() {
+            order.apply(&envelope.payload);
+        }
+        Ok(Some(order))
+    }
+
+    async fn commit(
+        &self,
+        aggregate: &OrderAggregate,
+        events: Vec<OrderEvent>,
+        metadata: Metadata,
+    ) -> Result<Vec<EventEnvelope<OrderAggregate>>, OrderError> {
+        let envelopes: Vec<EventEnvelope<OrderAggregate>> = events
+            .into_iter()
+            .map(|e| EventEnvelope::new(metadata.clone(), e))
+            .collect();
+
+        // 序列化并保存到 EventRepository
+        let last_seq = self
+            .event_repo
+            .get_events::<OrderAggregate>(aggregate.id())
+            .await?
+            .len();
+
+        let serialized: Vec<SerializedEvent> = envelopes
+            .iter()
+            .enumerate()
+            .map(|(i, env)| SerializedEvent {
+                aggregate_id: aggregate.id().to_string(),
+                aggregate_type: OrderAggregate::TYPE.to_string(),
+                event_type: env.payload.event_type(),
+                event_version: env.payload.event_version(),
+                sequence: last_seq + i + 1,
+                metadata: serde_json::to_value(&env.metadata).unwrap(),
+                payload: serde_json::to_value(&env.payload).unwrap(),
+            })
+            .collect();
+
+        self.event_repo.commit::<OrderAggregate>(&serialized)?;
+
+        Ok(envelopes)
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    let event_repo = InMemoryEventRepository::default();
+    let snapshot_repo = InMemorySnapshotRepository::default();
+    let repo = OrderRepository::new(event_repo.clone(), snapshot_repo.clone());
+    let root = AggregateRoot::<OrderAggregate, _>::new(repo.clone());
+    let order_id = "order-001".to_string();
+
+    println!("=== SnapshotRepository 示例（使用 AggregateRoot）===\n");
+
+    // 使用 AggregateRoot 执行命令
+    println!("--- 使用 AggregateRoot 创建订单 ---");
+
+    // 添加商品
+    let items = vec![
+        ("product-A", 2, 100),
+        ("product-B", 1, 200),
+        ("product-C", 3, 50),
+    ];
+
+    for (product_id, quantity, price) in items {
+        root.execute(
+            &order_id,
+            OrderCommand::AddItem {
+                product_id: product_id.to_string(),
+                quantity,
+                price,
+            },
+            Metadata::default(),
+        )
+        .await?;
+        println!(
+            "✅ 添加商品: {} x{} = {}",
+            product_id,
+            quantity,
+            price * (quantity as i64)
+        );
+    }
+
+    // 移除一个商品
+    root.execute(
+        &order_id,
+        OrderCommand::RemoveItem {
+            product_id: "product-C".to_string(),
+        },
+        Metadata::default(),
+    )
+    .await?;
+    println!("✅ 移除商品: product-C");
+
+    // 加载当前状态并保存快照
+    let order = repo.load_aggregate(&order_id).await?.unwrap();
+    snapshot_repo.commit(&order)?;
+    println!("\n📸 保存快照 v{}", order.version());
+
+    // 继续订单流程
+    println!("\n--- 订单状态流转 ---");
+    root.execute(&order_id, OrderCommand::Confirm, Metadata::default())
+        .await?;
+    println!("✅ 确认订单");
+
+    root.execute(&order_id, OrderCommand::Pay, Metadata::default())
+        .await?;
+    println!("✅ 支付订单");
+
+    // 保存第二个快照
+    let order = repo.load_aggregate(&order_id).await?.unwrap();
+    snapshot_repo.commit(&order)?;
+    println!("\n📸 保存快照 v{}", order.version());
+
+    root.execute(&order_id, OrderCommand::Ship, Metadata::default())
+        .await?;
+    println!("✅ 发货订单");
+
+    // 保存第三个快照
+    let order = repo.load_aggregate(&order_id).await?.unwrap();
+    snapshot_repo.commit(&order)?;
+    println!("\n📸 保存快照 v{}", order.version());
+
+    root.execute(&order_id, OrderCommand::Deliver, Metadata::default())
+        .await?;
+    println!("✅ 签收订单");
+
+    // 保存第四个快照
+    let order = repo.load_aggregate(&order_id).await?.unwrap();
+    snapshot_repo.commit(&order)?;
+    println!("\n📸 保存快照 v{}", order.version());
+
+    // 演示快照查询
+    println!("\n--- 使用 SnapshotRepository 查询快照 ---");
+
+    // 获取最新快照
+    if let Some(snapshot) = snapshot_repo
+        .get_snapshot::<OrderAggregate>(&order_id, OrderAggregate::TYPE, None)
+        .await?
+    {
+        println!("最新快照: 版本={}", snapshot.version);
+        let restored: OrderAggregate = snapshot.to_aggregate()?;
+        println!(
+            "  状态: {:?}, 总金额: {}, 商品数: {}",
+            restored.status,
+            restored.total_amount,
+            restored.items.len()
+        );
+    }
+
+    // 获取指定版本的快照
+    if let Some(snapshot) = snapshot_repo
+        .get_snapshot::<OrderAggregate>(&order_id, OrderAggregate::TYPE, Some(4))
+        .await?
+    {
+        println!("\n查询版本4的快照: 实际返回版本={}", snapshot.version);
+        let restored: OrderAggregate = snapshot.to_aggregate()?;
+        println!(
+            "  状态: {:?}, 总金额: {}, 商品数: {}",
+            restored.status,
+            restored.total_amount,
+            restored.items.len()
+        );
+    }
+
+    // 使用 AggregateRepository 重新加载（利用快照优化）
+    println!("\n--- 使用 AggregateRepository 加载聚合（自动使用快照）---");
+    let loaded = repo.load_aggregate(&order_id).await?.unwrap();
+    println!(
+        "订单ID: {}, 状态: {:?}, 总金额: {}, 版本: {}",
+        loaded.id(),
+        loaded.status,
+        loaded.total_amount,
+        loaded.version()
+    );
+
+    // 演示取消订单命令（创建新订单）
+    println!("\n--- 演示取消订单 ---");
+    let order_id_2 = "order-002".to_string();
+    root.execute(
+        &order_id_2,
+        OrderCommand::AddItem {
+            product_id: "product-D".to_string(),
+            quantity: 1,
+            price: 100,
+        },
+        Metadata::default(),
+    )
+    .await?;
+    println!("✅ 创建订单 order-002 并添加商品");
+
+    root.execute(&order_id_2, OrderCommand::Cancel, Metadata::default())
+        .await?;
+    println!("✅ 取消订单 order-002");
+
+    let cancelled_order = repo.load_aggregate(&order_id_2).await?.unwrap();
+    println!(
+        "订单ID: {}, 状态: {:?}",
+        cancelled_order.id(),
+        cancelled_order.status
+    );
+
+    println!("\n--- SnapshotRepository 的作用 ---");
+    println!("✅ SnapshotRepository: 快照存储接口");
+    println!("   - 提供聚合快照的持久化和查询能力");
+    println!("   - 支持按版本查询快照");
+    println!("   - 优化事件溯源性能，避免重放大量事件");
+    println!("\n✅ AggregateRepository 整合快照:");
+    println!("   - load_aggregate 时优先使用快照");
+    println!("   - 从快照恢复 + 重放增量事件");
+    println!("   - 对上层透明，自动优化性能");
+    println!("\n✅ 快照策略:");
+    println!("   • 每隔N个事件创建快照（如每10个事件）");
+    println!("   • 版本6的订单: 快照v6直接恢复（0个事件重放）");
+    println!("   • 版本4的订单: 快照v3恢复 + 重放1个事件");
+    println!("   • 没有快照: 需要重放所有6个事件");
+    println!("\n✅ 性能优势:");
+    println!("   • 事件数100: 快照节省90%+重放时间");
+    println!("   • 事件数1000: 快照节省99%+重放时间");
+    println!("   • 高频聚合: 快照是性能的关键");
+
+    Ok(())
+}
