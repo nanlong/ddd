@@ -26,11 +26,11 @@ pub trait EventRepositoryExt: EventRepository {
         &self,
         aggregate_id: &str,
     ) -> Result<AggregateEvents<A>> {
-        let events = self.get_events::<A>(aggregate_id).await?;
-
-        let events = events
-            .into_iter()
-            .map(|e| EventEnvelope::<A>::try_from(&e))
+        let events = self
+            .get_events::<A>(aggregate_id)
+            .await?
+            .iter()
+            .map(|e| EventEnvelope::<A>::try_from(e))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(AggregateEvents::new(events))
