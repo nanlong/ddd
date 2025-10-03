@@ -397,7 +397,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+    async fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -456,7 +456,7 @@ impl SnapshotRepository for InMemorySnapshotRepository {
     }
 
     /// 保存快照
-    fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
         let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
         let mut snapshots = self.snapshots.lock().unwrap();
 
@@ -563,7 +563,7 @@ where
             .collect();
 
         let serialized = serialize_events(&envelopes)?;
-        self.event_repo.save::<OrderAggregate>(&serialized)?;
+        self.event_repo.save::<OrderAggregate>(&serialized).await?;
 
         Ok(envelopes)
     }
@@ -624,7 +624,7 @@ async fn main() -> Result<()> {
 
     // 加载当前状态并保存快照
     let order = repo.load(&order_id).await?.unwrap();
-    snapshot_repo.save(&order)?;
+    snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
     // 继续订单流程
@@ -639,7 +639,7 @@ async fn main() -> Result<()> {
 
     // 保存第二个快照
     let order = repo.load(&order_id).await?.unwrap();
-    snapshot_repo.save(&order)?;
+    snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
     root.execute(&order_id, OrderCommand::Ship, BusinessContext::default())
@@ -648,7 +648,7 @@ async fn main() -> Result<()> {
 
     // 保存第三个快照
     let order = repo.load(&order_id).await?.unwrap();
-    snapshot_repo.save(&order)?;
+    snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
     root.execute(&order_id, OrderCommand::Deliver, BusinessContext::default())
@@ -657,7 +657,7 @@ async fn main() -> Result<()> {
 
     // 保存第四个快照
     let order = repo.load(&order_id).await?.unwrap();
-    snapshot_repo.save(&order)?;
+    snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
     // 演示快照查询

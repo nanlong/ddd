@@ -245,7 +245,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+    async fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -321,7 +321,7 @@ where
             .collect();
 
         let serialized = serialize_events(&envelopes)?;
-        self.event_repo.save::<BankAccount>(&serialized)?;
+        self.event_repo.save::<BankAccount>(&serialized).await?;
 
         Ok(envelopes)
     }

@@ -13,7 +13,7 @@ pub trait SnapshotRepository: Send + Sync {
         version: Option<usize>,
     ) -> Result<Option<Self::SerializedSnapshot>>;
 
-    fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()>;
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()>;
 }
 
 #[async_trait]
@@ -31,7 +31,7 @@ where
         (**self).get_snapshot::<A>(aggregate_id, version).await
     }
 
-    fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
-        (**self).save::<A>(aggregate)
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+        (**self).save::<A>(aggregate).await
     }
 }

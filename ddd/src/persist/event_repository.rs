@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 #[async_trait]
 pub trait EventRepository: Send + Sync {
-    type SerializedEvent;
+    type SerializedEvent: Send + Sync;
 
     async fn get_events<A: Aggregate>(
         &self,
@@ -18,7 +18,7 @@ pub trait EventRepository: Send + Sync {
         last_version: usize,
     ) -> Result<Vec<Self::SerializedEvent>>;
 
-    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()>;
+    async fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()>;
 }
 
 #[async_trait]
@@ -45,7 +45,7 @@ where
             .await
     }
 
-    fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
-        (**self).save::<A>(events)
+    async fn save<A: Aggregate>(&self, events: &[Self::SerializedEvent]) -> Result<()> {
+        (**self).save::<A>(events).await
     }
 }
