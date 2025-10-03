@@ -4,11 +4,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope, Metadata};
-use ddd::persist::{AggragateRepository, EventRepository};
+use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::event_upcaster::EventUpcasterChain;
+use ddd::persist::{
+    AggragateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
+};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
@@ -202,53 +204,6 @@ impl Aggregate for BankAccount {
 }
 
 // ============================================================================
-// 序列化事件定义
-// ============================================================================
-
-/// 序列化事件，用于持久化存储
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedEvent {
-    pub aggregate_id: String,
-    pub aggregate_type: String,
-    pub event_type: String,
-    pub event_version: usize,
-    pub sequence: usize,
-    pub metadata: Value,
-    pub payload: Value,
-    pub context: Value,
-}
-
-impl SerializedEvent {
-    fn from_envelope<A: Aggregate>(envelope: &EventEnvelope<A>, sequence: usize) -> Result<Self> {
-        let metadata_value = serde_json::to_value(&envelope.metadata)?;
-        let metadata_map = metadata_value.as_object().unwrap();
-
-        Ok(Self {
-            aggregate_id: metadata_map["aggregate_id"].as_str().unwrap().to_string(),
-            aggregate_type: metadata_map["aggregate_type"].as_str().unwrap().to_string(),
-            event_type: envelope.payload.event_type(),
-            event_version: envelope.payload.event_version(),
-            sequence,
-            metadata: metadata_value,
-            payload: serde_json::to_value(&envelope.payload)?,
-            context: serde_json::to_value(&envelope.context)?,
-        })
-    }
-
-    fn to_envelope<A: Aggregate>(&self) -> Result<EventEnvelope<A>> {
-        let metadata: Metadata = serde_json::from_value(self.metadata.clone())?;
-        let payload: A::Event = serde_json::from_value(self.payload.clone())?;
-        let context: BusinessContext = serde_json::from_value(self.context.clone())?;
-
-        Ok(EventEnvelope {
-            metadata,
-            payload,
-            context,
-        })
-    }
-}
-
-// ============================================================================
 // 内存事件仓储实现
 // ============================================================================
 
@@ -282,7 +237,7 @@ impl EventRepository for InMemoryEventRepository {
             .get(aggregate_id)
             .map(|evts| {
                 evts.iter()
-                    .filter(|e| e.event_version > last_version)
+                    .filter(|e| e.event_version() > last_version)
                     .cloned()
                     .collect()
             })
@@ -296,7 +251,7 @@ impl EventRepository for InMemoryEventRepository {
         }
 
         let mut store = self.events.lock().unwrap();
-        let aggregate_id = &events[0].aggregate_id;
+        let aggregate_id = events[0].aggregate_id().to_string();
 
         let entry = store.entry(aggregate_id.clone()).or_default();
         entry.extend_from_slice(events);
@@ -309,19 +264,33 @@ impl EventRepository for InMemoryEventRepository {
 // AggregateRepository 实现（整合 EventRepository）
 // ============================================================================
 
-#[derive(Clone)]
-struct BankAccountRepository {
-    event_repo: InMemoryEventRepository,
+struct BankAccountRepository<A, E>
+where
+    A: Aggregate,
+    E: EventRepository,
+{
+    event_repo: E,
+    upcaster_chain: EventUpcasterChain<EventEnvelope<A>>,
 }
 
-impl BankAccountRepository {
-    fn new(event_repo: InMemoryEventRepository) -> Self {
-        Self { event_repo }
+impl<A, E> BankAccountRepository<A, E>
+where
+    A: Aggregate,
+    E: EventRepository,
+{
+    fn new(event_repo: E) -> Self {
+        Self {
+            event_repo,
+            upcaster_chain: EventUpcasterChain::new(),
+        }
     }
 }
 
 #[async_trait]
-impl AggragateRepository<BankAccount> for BankAccountRepository {
+impl<E> AggragateRepository<BankAccount> for BankAccountRepository<BankAccount, E>
+where
+    E: EventRepository<SerializedEvent = SerializedEvent>,
+{
     async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, BankAccountError> {
         let serialized = self
             .event_repo
@@ -332,7 +301,7 @@ impl AggragateRepository<BankAccount> for BankAccountRepository {
             return Ok(None);
         }
 
-        let envelopes = deserialize_events::<BankAccount>(&serialized)?;
+        let envelopes = deserialize_events::<BankAccount>(&self.upcaster_chain, serialized)?;
         let mut account = BankAccount::new(aggregate_id.to_string());
         for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
@@ -351,37 +320,11 @@ impl AggragateRepository<BankAccount> for BankAccountRepository {
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
 
-        let last_seq = self
-            .event_repo
-            .get_events::<BankAccount>(aggregate.id())
-            .await?
-            .len();
-        let serialized = serialize_events(&envelopes, last_seq + 1)?;
+        let serialized = serialize_events(&envelopes)?;
         self.event_repo.save::<BankAccount>(&serialized)?;
 
         Ok(envelopes)
     }
-}
-
-// ============================================================================
-// 辅助函数：从 EventEnvelope 转换为 SerializedEvent
-// ============================================================================
-
-fn serialize_events<A: Aggregate>(
-    envelopes: &[EventEnvelope<A>],
-    start_sequence: usize,
-) -> Result<Vec<SerializedEvent>> {
-    envelopes
-        .iter()
-        .enumerate()
-        .map(|(i, env)| SerializedEvent::from_envelope(env, start_sequence + i))
-        .collect()
-}
-
-fn deserialize_events<A: Aggregate>(
-    serialized: &[SerializedEvent],
-) -> Result<Vec<EventEnvelope<A>>> {
-    serialized.iter().map(|se| se.to_envelope::<A>()).collect()
 }
 
 // ============================================================================
@@ -390,8 +333,8 @@ fn deserialize_events<A: Aggregate>(
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let event_repo = InMemoryEventRepository::default();
-    let repo = BankAccountRepository::new(event_repo.clone());
+    let event_repo = Arc::new(InMemoryEventRepository::default());
+    let repo = Arc::new(BankAccountRepository::new(event_repo.clone()));
     let root = AggregateRoot::<BankAccount, _>::new(repo.clone());
     let account_id = "account-001".to_string();
 
@@ -446,8 +389,9 @@ async fn main() -> Result<()> {
     println!("共 {} 个事件:", all_events.len());
     for event in &all_events {
         println!(
-            "  序号: {}, 类型: {}, 版本: {}",
-            event.sequence, event.event_type, event.event_version
+            "  类型: {}, 版本: {}",
+            event.event_type(),
+            event.event_version()
         );
     }
 
@@ -459,8 +403,9 @@ async fn main() -> Result<()> {
     println!("共 {} 个增量事件:", incremental.len());
     for event in &incremental {
         println!(
-            "  序号: {}, 类型: {}, 版本: {}",
-            event.sequence, event.event_type, event.event_version
+            "  类型: {}, 版本: {}",
+            event.event_type(),
+            event.event_version()
         );
     }
 

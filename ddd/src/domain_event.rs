@@ -20,6 +20,20 @@ pub struct Metadata {
     occurred_at: DateTime<Utc>,
 }
 
+impl Metadata {
+    pub fn aggregate_id(&self) -> &str {
+        &self.aggregate_id
+    }
+
+    pub fn aggregate_type(&self) -> &str {
+        &self.aggregate_type
+    }
+
+    pub fn occurred_at(&self) -> &DateTime<Utc> {
+        &self.occurred_at
+    }
+}
+
 /// 业务上下文信息
 #[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct BusinessContext {
@@ -27,6 +41,24 @@ pub struct BusinessContext {
     causation_id: Option<String>,
     actor_type: Option<String>,
     actor_id: Option<String>,
+}
+
+impl BusinessContext {
+    pub fn correlation_id(&self) -> Option<&str> {
+        self.correlation_id.as_deref()
+    }
+
+    pub fn causation_id(&self) -> Option<&str> {
+        self.causation_id.as_deref()
+    }
+
+    pub fn actor_type(&self) -> Option<&str> {
+        self.actor_type.as_deref()
+    }
+
+    pub fn actor_id(&self) -> Option<&str> {
+        self.actor_id.as_deref()
+    }
 }
 
 /// 事件信封，包含事件及其元数据

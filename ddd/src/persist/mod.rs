@@ -1,7 +1,9 @@
-pub mod aggregate_repository;
-pub mod event_repository;
-pub mod snapshot_repository;
+mod aggregate_repository;
+mod event_repository;
+mod serialized_event;
+mod snapshot_repository;
 
 pub use aggregate_repository::AggragateRepository;
 pub use event_repository::EventRepository;
+pub use serialized_event::{SerializedEvent, deserialize_events, serialize_events};
 pub use snapshot_repository::SnapshotRepository;

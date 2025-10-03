@@ -7,7 +7,11 @@ use chrono;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
-use ddd::persist::{AggragateRepository, EventRepository, SnapshotRepository};
+use ddd::event_upcaster::EventUpcasterChain;
+use ddd::persist::{
+    AggragateRepository, EventRepository, SerializedEvent, SnapshotRepository, deserialize_events,
+    serialize_events,
+};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -352,23 +356,6 @@ impl SerializedSnapshot {
 }
 
 // ============================================================================
-// 序列化事件定义
-// ============================================================================
-
-/// 序列化事件，用于持久化存储
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedEvent {
-    pub aggregate_id: String,
-    pub aggregate_type: String,
-    pub event_type: String,
-    pub event_version: usize,
-    pub sequence: usize,
-    pub metadata: Value,
-    pub payload: Value,
-    pub context: Value,
-}
-
-// ============================================================================
 // 内存事件仓储实现
 // ============================================================================
 
@@ -402,7 +389,7 @@ impl EventRepository for InMemoryEventRepository {
             .get(aggregate_id)
             .map(|evts| {
                 evts.iter()
-                    .filter(|e| e.event_version > last_version)
+                    .filter(|e| e.event_version() > last_version)
                     .cloned()
                     .collect()
             })
@@ -416,7 +403,7 @@ impl EventRepository for InMemoryEventRepository {
         }
 
         let mut store = self.events.lock().unwrap();
-        let aggregate_id = &events[0].aggregate_id;
+        let aggregate_id = events[0].aggregate_id().to_string();
 
         let entry = store.entry(aggregate_id.clone()).or_default();
         entry.extend_from_slice(events);
@@ -483,27 +470,43 @@ impl SnapshotRepository for InMemorySnapshotRepository {
         Ok(())
     }
 }
+
 // ============================================================================
 // AggregateRepository 实现（整合 SnapshotRepository）
 // ============================================================================
 
-#[derive(Clone)]
-struct OrderRepository {
-    event_repo: InMemoryEventRepository,
-    snapshot_repo: InMemorySnapshotRepository,
+struct OrderRepository<A, E, S>
+where
+    A: Aggregate,
+    E: EventRepository,
+    S: SnapshotRepository,
+{
+    event_repo: E,
+    snapshot_repo: S,
+    upcaster_chain: EventUpcasterChain<EventEnvelope<A>>,
 }
 
-impl OrderRepository {
-    fn new(event_repo: InMemoryEventRepository, snapshot_repo: InMemorySnapshotRepository) -> Self {
+impl<A, E, S> OrderRepository<A, E, S>
+where
+    A: Aggregate,
+    E: EventRepository,
+    S: SnapshotRepository,
+{
+    fn new(event_repo: E, snapshot_repo: S) -> Self {
         Self {
             event_repo,
             snapshot_repo,
+            upcaster_chain: EventUpcasterChain::new(),
         }
     }
 }
 
 #[async_trait]
-impl AggragateRepository<OrderAggregate> for OrderRepository {
+impl<E, S> AggragateRepository<OrderAggregate> for OrderRepository<OrderAggregate, E, S>
+where
+    E: EventRepository<SerializedEvent = SerializedEvent>,
+    S: SnapshotRepository<SerializedSnapshot = SerializedSnapshot>,
+{
     async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, OrderError> {
         // 1. 尝试从快照加载
         if let Some(snapshot) = self
@@ -520,10 +523,10 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
                 .get_last_events::<OrderAggregate>(aggregate_id, snapshot_version)
                 .await?;
 
-            for se in incremental.iter() {
-                if let Ok(payload) = serde_json::from_value::<OrderEvent>(se.payload.clone()) {
-                    order.apply(&payload);
-                }
+            let envelopes =
+                deserialize_events::<OrderAggregate>(&self.upcaster_chain, incremental)?;
+            for envelope in envelopes.iter() {
+                order.apply(&envelope.payload);
             }
 
             return Ok(Some(order));
@@ -539,12 +542,10 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
             return Ok(None);
         }
 
-        // 将 SerializedEvent 转换为 EventEnvelope 并应用到聚合
+        let envelopes = deserialize_events::<OrderAggregate>(&self.upcaster_chain, serialized)?;
         let mut order = OrderAggregate::new(aggregate_id.to_string());
-        for se in serialized.iter() {
-            if let Ok(payload) = serde_json::from_value::<OrderEvent>(se.payload.clone()) {
-                order.apply(&payload);
-            }
+        for envelope in envelopes.iter() {
+            order.apply(&envelope.payload);
         }
 
         Ok(Some(order))
@@ -561,33 +562,7 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
 
-        // 序列化并保存到 EventRepository
-        let last_seq = self
-            .event_repo
-            .get_events::<OrderAggregate>(aggregate.id())
-            .await?
-            .len();
-
-        let serialized: Vec<SerializedEvent> = envelopes
-            .iter()
-            .enumerate()
-            .map(|(i, env)| {
-                let metadata_value = serde_json::to_value(&env.metadata).unwrap();
-                let metadata_map = metadata_value.as_object().unwrap();
-
-                SerializedEvent {
-                    aggregate_id: metadata_map["aggregate_id"].as_str().unwrap().to_string(),
-                    aggregate_type: metadata_map["aggregate_type"].as_str().unwrap().to_string(),
-                    event_type: env.payload.event_type(),
-                    event_version: env.payload.event_version(),
-                    sequence: last_seq + i + 1,
-                    metadata: metadata_value,
-                    payload: serde_json::to_value(&env.payload).unwrap(),
-                    context: serde_json::to_value(&env.context).unwrap(),
-                }
-            })
-            .collect();
-
+        let serialized = serialize_events(&envelopes)?;
         self.event_repo.save::<OrderAggregate>(&serialized)?;
 
         Ok(envelopes)
@@ -596,9 +571,12 @@ impl AggragateRepository<OrderAggregate> for OrderRepository {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let event_repo = InMemoryEventRepository::default();
-    let snapshot_repo = InMemorySnapshotRepository::default();
-    let repo = OrderRepository::new(event_repo.clone(), snapshot_repo.clone());
+    let event_repo = Arc::new(InMemoryEventRepository::default());
+    let snapshot_repo = Arc::new(InMemorySnapshotRepository::default());
+    let repo = Arc::new(OrderRepository::new(
+        event_repo.clone(),
+        snapshot_repo.clone(),
+    ));
     let root = AggregateRoot::<OrderAggregate, _>::new(repo.clone());
     let order_id = "order-001".to_string();
 

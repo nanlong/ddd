@@ -3,6 +3,7 @@ use crate::{
     domain_event::{BusinessContext, EventEnvelope},
 };
 use async_trait::async_trait;
+use std::sync::Arc;
 
 #[async_trait]
 pub trait AggragateRepository<A>: Send + Sync
@@ -17,4 +18,24 @@ where
         events: Vec<A::Event>,
         context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error>;
+}
+
+#[async_trait]
+impl<A, T> AggragateRepository<A> for Arc<T>
+where
+    A: Aggregate,
+    T: AggragateRepository<A> + ?Sized,
+{
+    async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
+        (**self).load(aggregate_id).await
+    }
+
+    async fn save(
+        &self,
+        aggregate: &A,
+        events: Vec<A::Event>,
+        context: BusinessContext,
+    ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
+        (**self).save(aggregate, events, context).await
+    }
 }
