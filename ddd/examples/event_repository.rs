@@ -7,7 +7,7 @@ use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
-    AggragateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
+    AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
 };
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
@@ -216,10 +216,7 @@ struct InMemoryEventRepository {
 #[async_trait]
 impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
-    async fn get_events<A: Aggregate>(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Vec<SerializedEvent>> {
+    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
     }
@@ -287,7 +284,7 @@ where
 }
 
 #[async_trait]
-impl<E> AggragateRepository<BankAccount> for BankAccountRepository<BankAccount, E>
+impl<E> AggregateRepository<BankAccount> for BankAccountRepository<BankAccount, E>
 where
     E: EventRepository,
 {

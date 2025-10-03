@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[async_trait]
-pub trait AggragateRepository<A>: Send + Sync
+pub trait AggregateRepository<A>: Send + Sync
 where
     A: Aggregate,
 {
@@ -21,10 +21,10 @@ where
 }
 
 #[async_trait]
-impl<A, T> AggragateRepository<A> for Arc<T>
+impl<A, T> AggregateRepository<A> for Arc<T>
 where
     A: Aggregate,
-    T: AggragateRepository<A> + ?Sized,
+    T: AggregateRepository<A> + ?Sized,
 {
     async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
         (**self).load(aggregate_id).await

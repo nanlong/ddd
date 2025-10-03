@@ -9,7 +9,7 @@ use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
-    AggragateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
+    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
     deserialize_events, serialize_events,
 };
 use ddd_macros::{aggregate, event};
@@ -471,7 +471,7 @@ where
 }
 
 #[async_trait]
-impl<E, S> AggragateRepository<OrderAggregate> for OrderRepository<OrderAggregate, E, S>
+impl<E, S> AggregateRepository<OrderAggregate> for OrderRepository<OrderAggregate, E, S>
 where
     E: EventRepository,
     S: SnapshotRepository,

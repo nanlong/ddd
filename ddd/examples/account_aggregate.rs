@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
-use ddd::persist::AggragateRepository;
+use ddd::persist::AggregateRepository;
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -173,7 +173,7 @@ struct InMemoryAccountRepo {
 }
 
 #[async_trait]
-impl AggragateRepository<Account> for InMemoryAccountRepo {
+impl AggregateRepository<Account> for InMemoryAccountRepo {
     async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
