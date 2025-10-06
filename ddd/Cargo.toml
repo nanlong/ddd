@@ -12,12 +12,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 futures-core = { version = "0.3", features = ["alloc"] }
 futures-util = { version = "0.3" }
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7" }
 
 [dev-dependencies]
 ddd-macros = { path = "../ddd-macros" }
 ulid = { version = "1.2" }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [[example]]
 name = "event_upcasting"
@@ -34,3 +35,7 @@ path = "examples/event_repository.rs"
 [[example]]
 name = "snapshot_repository"
 path = "examples/snapshot_repository.rs"
+
+[[example]]
+name = "eventing_inmemory"
+path = "examples/eventing_inmemory.rs"

@@ -2,84 +2,43 @@ use super::handler::HandledEventType;
 use super::{EventBus, EventDeliverer, EventHandler, EventReclaimer};
 use crate::persist::SerializedEvent;
 use async_trait::async_trait;
+use bon::Builder;
 use futures_util::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 use tokio::time::{self, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
+// 导入由 bon::Builder 生成的 typestate 模块与状态转换别名
+use self::event_engine_builder::{IsUnset, SetRegistry, State as BuilderState};
+
 /// EventEngine：
 /// - 周期性从 Deliverer/Reclaimer 拉取事件并发布到 Bus
 /// - 订阅 Bus 的事件流，分发到匹配的 Handler，并发处理
+#[derive(Builder)]
 pub struct EventEngine {
     event_bus: Arc<dyn EventBus>,
     event_deliverer: Arc<dyn EventDeliverer>,
     event_reclaimer: Arc<dyn EventReclaimer>,
+    #[builder(setters(vis = "pub(crate)"))]
     registry: HandlerRegistry,
+    #[builder(default)]
     config: EventEngineConfig,
 }
 
-#[derive(Clone, Default)]
-struct HandlerRegistry {
-    by_type: HashMap<String, Vec<Arc<dyn EventHandler>>>,
-    all: Vec<Arc<dyn EventHandler>>,
-}
-
-impl HandlerRegistry {
-    fn new(handlers: Vec<Arc<dyn EventHandler>>) -> Self {
-        let mut by_type: HashMap<String, Vec<Arc<dyn EventHandler>>> = HashMap::new();
-        let mut all: Vec<Arc<dyn EventHandler>> = Vec::new();
-
-        for h in handlers {
-            match h.handled_event_type() {
-                HandledEventType::All => all.push(h),
-                HandledEventType::One(t) => {
-                    by_type.entry(t).or_default().push(h);
-                }
-                HandledEventType::Many(ts) => {
-                    for t in ts {
-                        by_type.entry(t).or_default().push(h.clone());
-                    }
-                }
-            }
-        }
-
-        Self { by_type, all }
-    }
-
-    fn matching(&self, event_type: &str) -> Vec<Arc<dyn EventHandler>> {
-        let mut merged: Vec<Arc<dyn EventHandler>> = Vec::new();
-        if let Some(list) = self.by_type.get(event_type) {
-            merged.extend(list.iter().cloned());
-        }
-        merged.extend(self.all.iter().cloned());
-        merged
+impl<S: BuilderState> EventEngineBuilder<S> {
+    pub fn event_handlers(
+        self,
+        handlers: Vec<Arc<dyn EventHandler>>,
+    ) -> EventEngineBuilder<SetRegistry<S>>
+    where
+        <S as BuilderState>::Registry: IsUnset,
+    {
+        self.registry(HandlerRegistry::new(handlers))
     }
 }
 
 impl EventEngine {
-    pub fn new(
-        event_bus: Arc<dyn EventBus>,
-        event_handlers: Vec<Arc<dyn EventHandler>>,
-        event_deliverer: Arc<dyn EventDeliverer>,
-        event_reclaimer: Arc<dyn EventReclaimer>,
-    ) -> Self {
-        let registry = HandlerRegistry::new(event_handlers);
-
-        Self {
-            event_bus,
-            event_deliverer,
-            event_reclaimer,
-            registry,
-            config: EventEngineConfig::default(),
-        }
-    }
-
-    pub fn with_config(mut self, config: EventEngineConfig) -> Self {
-        self.config = config;
-        self
-    }
-
     /// 启动事件引擎，返回可用于关闭/等待的句柄
     pub fn start(self: Arc<Self>) -> EngineHandle {
         let token = CancellationToken::new();
@@ -224,6 +183,49 @@ impl EventEngine {
                 }
             }
         }
+    }
+}
+
+// 自定义 Builder 方法：接收 handlers，内部转换为 HandlerRegistry 并设置到 builder 的 registry 字段。
+// 注意：受 typestate 限制，仅当 `registry` 尚未设置时可调用。
+// 若已设置 `registry`，编译器会报错提示重复设置。
+// 正确的做法是：链式调用一次 `event_handlers(...)` 即可。
+
+#[derive(Clone, Default)]
+struct HandlerRegistry {
+    by_type: HashMap<String, Vec<Arc<dyn EventHandler>>>,
+    all: Vec<Arc<dyn EventHandler>>,
+}
+
+impl HandlerRegistry {
+    fn new(handlers: Vec<Arc<dyn EventHandler>>) -> Self {
+        let mut by_type: HashMap<String, Vec<Arc<dyn EventHandler>>> = HashMap::new();
+        let mut all: Vec<Arc<dyn EventHandler>> = Vec::new();
+
+        for h in handlers {
+            match h.handled_event_type() {
+                HandledEventType::All => all.push(h),
+                HandledEventType::One(t) => {
+                    by_type.entry(t).or_default().push(h);
+                }
+                HandledEventType::Many(ts) => {
+                    for t in ts {
+                        by_type.entry(t).or_default().push(h.clone());
+                    }
+                }
+            }
+        }
+
+        Self { by_type, all }
+    }
+
+    fn matching(&self, event_type: &str) -> Vec<Arc<dyn EventHandler>> {
+        let mut merged: Vec<Arc<dyn EventHandler>> = Vec::new();
+        if let Some(list) = self.by_type.get(event_type) {
+            merged.extend(list.iter().cloned());
+        }
+        merged.extend(self.all.iter().cloned());
+        merged
     }
 }
 

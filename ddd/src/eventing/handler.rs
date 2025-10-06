@@ -2,6 +2,7 @@ use crate::persist::SerializedEvent;
 use anyhow::Result;
 use async_trait::async_trait;
 
+#[derive(Clone, Debug)]
 pub enum HandledEventType {
     One(String),
     Many(Vec<String>),

@@ -1,0 +1,250 @@
+use anyhow::{Result, anyhow};
+use chrono::Utc;
+use ddd::eventing::{
+    EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
+    HandledEventType,
+};
+use ddd::persist::SerializedEvent;
+use futures_core::stream::BoxStream;
+use futures_util::StreamExt;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
+
+// ---------------- In-memory EventBus ----------------
+
+#[derive(Clone)]
+struct InMemoryBus {
+    tx: broadcast::Sender<SerializedEvent>,
+}
+
+impl InMemoryBus {
+    fn new(capacity: usize) -> Self {
+        let (tx, _rx) = broadcast::channel(capacity);
+        Self { tx }
+    }
+}
+
+#[async_trait::async_trait]
+impl EventBus for InMemoryBus {
+    async fn publish(&self, event: &SerializedEvent) -> Result<()> {
+        let _ = self.tx.send(event.clone());
+        Ok(())
+    }
+
+    async fn subscribe(&self) -> BoxStream<'static, SerializedEvent> {
+        let rx = self.tx.subscribe();
+        let stream = BroadcastStream::new(rx).filter_map(|r| futures_util::future::ready(r.ok()));
+        Box::pin(stream)
+    }
+}
+
+// ---------------- In-memory Deliverer (Outbox) ----------------
+
+#[derive(Clone, Default)]
+struct InMemoryOutbox {
+    inner: Arc<Mutex<Vec<SerializedEvent>>>,
+}
+
+impl InMemoryOutbox {
+    fn push(&self, ev: SerializedEvent) {
+        self.inner.lock().unwrap().push(ev);
+    }
+
+    fn drain(&self) -> Vec<SerializedEvent> {
+        let mut g = self.inner.lock().unwrap();
+        let v = g.clone();
+        g.clear();
+        v
+    }
+}
+
+#[derive(Clone)]
+struct InMemoryDeliverer {
+    outbox: InMemoryOutbox,
+}
+
+#[async_trait::async_trait]
+impl EventDeliverer for InMemoryDeliverer {
+    async fn fetch_events(&self) -> Result<Vec<SerializedEvent>> {
+        Ok(self.outbox.drain())
+    }
+
+    async fn mark_delivered(&self, _events: &[&SerializedEvent]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn mark_failed(&self, _events: &[&SerializedEvent], _reason: &str) -> Result<()> {
+        // In-memory 简化：失败事件暂不重试
+        Ok(())
+    }
+}
+
+// ---------------- In-memory Reclaimer (Failures) ----------------
+
+#[derive(Clone, Default)]
+struct InMemoryFailures {
+    inner: Arc<Mutex<Vec<SerializedEvent>>>,
+}
+
+impl InMemoryFailures {
+    fn push(&self, ev: SerializedEvent) {
+        self.inner.lock().unwrap().push(ev);
+    }
+    fn drain(&self) -> Vec<SerializedEvent> {
+        let mut g = self.inner.lock().unwrap();
+        let v = g.clone();
+        g.clear();
+        v
+    }
+}
+
+#[derive(Clone)]
+struct InMemoryReclaimer {
+    failures: InMemoryFailures,
+}
+
+#[async_trait::async_trait]
+impl EventReclaimer for InMemoryReclaimer {
+    async fn fetch_events(&self) -> Result<Vec<SerializedEvent>> {
+        Ok(self.failures.drain())
+    }
+
+    async fn mark_reclaimed(&self, _events: &[&SerializedEvent]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn mark_failed(&self, events: &[&SerializedEvent], _reason: &str) -> Result<()> {
+        for ev in events {
+            self.failures.push((*ev).clone());
+        }
+        Ok(())
+    }
+
+    async fn mark_handler_failed(
+        &self,
+        _handler_name: &str,
+        events: &[&SerializedEvent],
+        _reason: &str,
+    ) -> Result<()> {
+        for ev in events {
+            self.failures.push((*ev).clone());
+        }
+        Ok(())
+    }
+}
+
+// ---------------- Example Handlers ----------------
+
+#[derive(Clone)]
+struct PrintHandler {
+    name: &'static str,
+    types: HandledEventType,
+    fail_on: Option<&'static str>,
+}
+
+#[async_trait::async_trait]
+impl EventHandler for PrintHandler {
+    async fn handle(&self, event: &SerializedEvent) -> Result<()> {
+        if let Some(bad) = self.fail_on {
+            if event.event_type() == bad {
+                return Err(anyhow!(format!("{} failed on {}", self.name, bad)));
+            }
+        }
+        println!(
+            "handler={} type={} aggregate={} payload={}",
+            self.name,
+            event.event_type(),
+            event.aggregate_id(),
+            event.payload()
+        );
+        Ok(())
+    }
+
+    fn handled_event_type(&self) -> HandledEventType {
+        self.types.clone()
+    }
+    fn handler_name(&self) -> &str {
+        self.name
+    }
+}
+
+// ---------------- Utility ----------------
+
+fn mk_event(id: &str, ty: &str) -> SerializedEvent {
+    SerializedEvent::builder()
+        .event_id(id.to_string())
+        .event_type(ty.to_string())
+        .event_version(1)
+        .aggregate_id(format!("agg-{}", id))
+        .aggregate_type("DemoAggregate".to_string())
+        .aggregate_version(1)
+        .actor_type("user".to_string())
+        .actor_id("u-1".to_string())
+        .occurred_at(Utc::now())
+        .payload(serde_json::json!({"id": id, "version": 1, "value": 42}))
+        .build()
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
+    // Bus
+    let bus = Arc::new(InMemoryBus::new(1024));
+
+    // Outbox & Deliverer
+    let outbox = InMemoryOutbox::default();
+    outbox.push(mk_event("e1", "UserCreated"));
+    outbox.push(mk_event("e2", "UserDeleted"));
+    let deliverer = Arc::new(InMemoryDeliverer {
+        outbox: outbox.clone(),
+    });
+
+    // Reclaimer
+    let reclaimer = Arc::new(InMemoryReclaimer {
+        failures: InMemoryFailures::default(),
+    });
+
+    // Handlers
+    let handlers: Vec<Arc<dyn EventHandler>> = vec![
+        Arc::new(PrintHandler {
+            name: "printer",
+            types: HandledEventType::All,
+            fail_on: None,
+        }),
+        Arc::new(PrintHandler {
+            name: "sometimes_fail",
+            types: HandledEventType::One("UserDeleted".to_string()),
+            fail_on: Some("UserDeleted"),
+        }),
+    ];
+
+    // Engine
+    let engine = Arc::new(
+        EventEngine::builder()
+            .event_bus(bus)
+            .event_handlers(handlers)
+            .event_deliverer(deliverer)
+            .event_reclaimer(reclaimer)
+            .config(EventEngineConfig {
+                deliver_interval: Duration::from_millis(200),
+                reclaim_interval: Duration::from_millis(400),
+                handler_concurrency: 8,
+            })
+            .build(),
+    );
+
+    let handle = engine.start();
+
+    // 演示在运行中继续塞入事件
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    outbox.push(mk_event("e3", "UserCreated"));
+    outbox.push(mk_event("e4", "UserDeleted"));
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    handle.shutdown();
+    handle.join().await;
+    Ok(())
+}
