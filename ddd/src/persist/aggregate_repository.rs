@@ -1,3 +1,4 @@
+use crate::error::DomainError;
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
@@ -74,14 +75,14 @@ impl<A, E> AggregateRepository<A> for EventStoreAggregateRepository<A, E>
 where
     A: Aggregate,
     E: EventRepository + Send + Sync,
-    A::Error: From<anyhow::Error> + Send + Sync,
+    A::Error: From<DomainError> + Send + Sync,
 {
     async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
         let serialized = self
             .event_repo
             .get_events::<A>(aggregate_id)
             .await
-            .map_err(|e| A::Error::from(e))?;
+            .map_err(A::Error::from)?;
 
         if serialized.is_empty() {
             return Ok(None);
@@ -93,9 +94,8 @@ where
         let id: A::Id = match aggregate_id.parse() {
             Ok(id) => id,
             Err(_) => {
-                return Err(A::Error::from(anyhow::anyhow!(
-                    "invalid aggregate id: {}",
-                    aggregate_id
+                return Err(A::Error::from(DomainError::InvalidAggregateId(
+                    aggregate_id.to_string(),
                 )));
             }
         };
@@ -172,7 +172,7 @@ where
     A: Aggregate,
     E: EventRepository + Send + Sync,
     S: SnapshotRepository + Send + Sync,
-    A::Error: From<anyhow::Error> + Send + Sync,
+    A::Error: From<DomainError> + Send + Sync,
 {
     async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
         // 1. 先尝试从快照还原
@@ -219,9 +219,8 @@ where
         let id: A::Id = match aggregate_id.parse() {
             Ok(id) => id,
             Err(_) => {
-                return Err(A::Error::from(anyhow::anyhow!(
-                    "invalid aggregate id: {}",
-                    aggregate_id
+                return Err(A::Error::from(DomainError::InvalidAggregateId(
+                    aggregate_id.to_string(),
                 )));
             }
         };

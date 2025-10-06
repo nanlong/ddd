@@ -151,8 +151,28 @@ where
         self.events.iter()
     }
 
-    /// 迭代并消费 AggregateEvents
-    pub fn into_iter(self) -> IntoIter<EventEnvelope<A>> {
+}
+
+impl<A> IntoIterator for AggregateEvents<A>
+where
+    A: Aggregate,
+{
+    type Item = EventEnvelope<A>;
+    type IntoIter = IntoIter<EventEnvelope<A>>;
+
+    fn into_iter(self) -> Self::IntoIter {
         self.events.into_iter()
+    }
+}
+
+impl<'a, A> IntoIterator for &'a AggregateEvents<A>
+where
+    A: Aggregate,
+{
+    type Item = &'a EventEnvelope<A>;
+    type IntoIter = Iter<'a, EventEnvelope<A>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.events.iter()
     }
 }

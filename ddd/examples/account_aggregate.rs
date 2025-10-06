@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::error::DomainError;
 use ddd::persist::AggregateRepository;
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
@@ -20,32 +20,6 @@ use ulid::Ulid;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Account {
     balance: usize,
-}
-
-#[derive(Debug)]
-enum AccountError {
-    AlreadyOpened,
-    NotOpened,
-    InsufficientFunds,
-    InvalidId(String),
-}
-
-impl Display for AccountError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AlreadyOpened => write!(f, "account already opened"),
-            Self::NotOpened => write!(f, "account not opened"),
-            Self::InsufficientFunds => write!(f, "insufficient funds"),
-            Self::InvalidId(msg) => write!(f, "invalid account id: {}", msg),
-        }
-    }
-}
-impl std::error::Error for AccountError {}
-
-impl From<std::string::ParseError> for AccountError {
-    fn from(_: std::string::ParseError) -> Self {
-        Self::InvalidId("parse error".to_string())
-    }
 }
 
 #[derive(Debug)]
@@ -80,13 +54,21 @@ impl DomainEvent for AccountEvent {
         .to_string()
     }
 
-    fn event_version(&self) -> usize { 1 }
+    fn event_version(&self) -> usize {
+        1
+    }
 
     fn aggregate_version(&self) -> usize {
         match self {
-            AccountEvent::Opened { aggregate_version, .. }
-            | AccountEvent::Deposited { aggregate_version, .. }
-            | AccountEvent::Withdrawn { aggregate_version, .. } => *aggregate_version,
+            AccountEvent::Opened {
+                aggregate_version, ..
+            }
+            | AccountEvent::Deposited {
+                aggregate_version, ..
+            }
+            | AccountEvent::Withdrawn {
+                aggregate_version, ..
+            } => *aggregate_version,
         }
     }
 }
@@ -97,7 +79,7 @@ impl Aggregate for Account {
     type Id = String;
     type Command = AccountCommand;
     type Event = AccountEvent;
-    type Error = AccountError;
+    type Error = DomainError;
 
     fn new(aggregate_id: Self::Id) -> Self {
         Self {
@@ -119,7 +101,9 @@ impl Aggregate for Account {
         match command {
             AccountCommand::Open { initial_balance } => {
                 if self.version() > 0 {
-                    return Err(AccountError::AlreadyOpened);
+                    return Err(DomainError::InvalidState {
+                        reason: "account already opened".to_string(),
+                    });
                 }
                 let evt = AccountEvent::Opened {
                     id: Ulid::new().to_string(),
@@ -130,7 +114,9 @@ impl Aggregate for Account {
             }
             AccountCommand::Deposit { amount } => {
                 if self.version() == 0 {
-                    return Err(AccountError::NotOpened);
+                    return Err(DomainError::InvalidState {
+                        reason: "account not opened".to_string(),
+                    });
                 }
                 let evt = AccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -141,10 +127,14 @@ impl Aggregate for Account {
             }
             AccountCommand::Withdraw { amount } => {
                 if self.version() == 0 {
-                    return Err(AccountError::NotOpened);
+                    return Err(DomainError::InvalidState {
+                        reason: "account not opened".to_string(),
+                    });
                 }
                 if self.balance < amount {
-                    return Err(AccountError::InsufficientFunds);
+                    return Err(DomainError::InvalidState {
+                        reason: "insufficient funds".to_string(),
+                    });
                 }
                 let evt = AccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
@@ -167,13 +157,17 @@ impl Aggregate for Account {
                 self.version = *aggregate_version;
             }
             AccountEvent::Deposited {
-                aggregate_version, amount, ..
+                aggregate_version,
+                amount,
+                ..
             } => {
                 self.balance += *amount;
                 self.version = *aggregate_version;
             }
             AccountEvent::Withdrawn {
-                aggregate_version, amount, ..
+                aggregate_version,
+                amount,
+                ..
             } => {
                 self.balance -= *amount;
                 self.version = *aggregate_version;
@@ -189,10 +183,10 @@ struct InMemoryAccountRepo {
 
 #[async_trait]
 impl AggregateRepository<Account> for InMemoryAccountRepo {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, AccountError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, DomainError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
-            let mut acc = Account::new(aggregate_id.parse()?);
+            let mut acc = Account::new(aggregate_id.to_string());
             for env in events.iter() {
                 acc.apply(&env.payload);
             }
@@ -207,7 +201,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
         aggregate: &Account,
         events: Vec<AccountEvent>,
         context: BusinessContext,
-    ) -> Result<Vec<EventEnvelope<Account>>, AccountError> {
+    ) -> Result<Vec<EventEnvelope<Account>>, DomainError> {
         let mut store = self.inner.lock().unwrap();
         let entry = store.entry(aggregate.id().to_string()).or_default();
         let mut out = Vec::with_capacity(events.len());

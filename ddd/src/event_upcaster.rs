@@ -1,5 +1,4 @@
-use crate::persist::SerializedEvent;
-use anyhow::Result;
+use crate::{error::DomainResult as Result, persist::SerializedEvent};
 use std::sync::Arc;
 
 /// 事件版本升级器（Upcaster）
@@ -10,6 +9,7 @@ pub trait EventUpcaster: Send + Sync {
 }
 
 /// 升级结果：单个、新的多个、或丢弃
+#[allow(clippy::large_enum_variant)]
 pub enum EventUpcasterResult {
     One(SerializedEvent),
     Many(Vec<SerializedEvent>),
@@ -21,13 +21,19 @@ pub struct EventUpcasterChain {
     stages: Vec<Arc<dyn EventUpcaster>>,
 }
 
+impl Default for EventUpcasterChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventUpcasterChain {
     pub fn new() -> Self {
         Self { stages: vec![] }
     }
 
     /// 添加一个 Upcaster 升级器到链中
-    pub fn add<U>(mut self, u: U) -> Self
+    pub fn push<U>(mut self, u: U) -> Self
     where
         U: EventUpcaster + 'static,
     {

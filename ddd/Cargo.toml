@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = { version = "1.0" }
 async-trait = { version = "0.1" }
 bon = { version = "3.7" }
 chrono = { version = "0.4", features = ["serde"] }
@@ -14,11 +13,13 @@ futures-core = { version = "0.3", features = ["alloc"] }
 futures-util = { version = "0.3" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7" }
+thiserror = { version = "1.0" }
 
 [dev-dependencies]
 ddd-macros = { path = "../ddd-macros" }
 ulid = { version = "1.2" }
 tokio-stream = { version = "0.1", features = ["sync"] }
+anyhow = { version = "1.0" }
 
 [[example]]
 name = "event_upcasting"

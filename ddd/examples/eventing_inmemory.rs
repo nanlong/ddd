@@ -1,7 +1,8 @@
 /// Eventing 引擎（内存版）示例
 /// 展示 Outbox -> Bus -> Handlers -> Reclaimer 的闭环，以及 handler 失败后的补偿重投
-use anyhow::{Result, anyhow};
+use anyhow::Result as AnyResult;
 use chrono::Utc;
+use ddd::error::{DomainError, DomainResult};
 use ddd::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
     HandledEventType,
@@ -34,15 +35,18 @@ impl InMemoryBus {
 
 #[async_trait::async_trait]
 impl EventBus for InMemoryBus {
-    async fn publish(&self, event: &SerializedEvent) -> Result<()> {
+    async fn publish(&self, event: &SerializedEvent) -> DomainResult<()> {
         let _ = self.tx.send(event.clone());
         Ok(())
     }
 
-    async fn subscribe(&self) -> BoxStream<'static, Result<SerializedEvent>> {
+    async fn subscribe(&self) -> BoxStream<'static, DomainResult<SerializedEvent>> {
         let rx = self.tx.subscribe();
-        let stream = BroadcastStream::new(rx)
-            .map(|r| r.map_err(|e| anyhow!(e.to_string())));
+        let stream = BroadcastStream::new(rx).map(|r| {
+            r.map_err(|e| DomainError::EventBus {
+                reason: e.to_string(),
+            })
+        });
         Box::pin(stream)
     }
 }
@@ -74,15 +78,15 @@ struct InMemoryDeliverer {
 
 #[async_trait::async_trait]
 impl EventDeliverer for InMemoryDeliverer {
-    async fn fetch_events(&self) -> Result<Vec<SerializedEvent>> {
+    async fn fetch_events(&self) -> DomainResult<Vec<SerializedEvent>> {
         Ok(self.outbox.drain())
     }
 
-    async fn mark_delivered(&self, _events: &[&SerializedEvent]) -> Result<()> {
+    async fn mark_delivered(&self, _events: &[&SerializedEvent]) -> DomainResult<()> {
         Ok(())
     }
 
-    async fn mark_failed(&self, _events: &[&SerializedEvent], _reason: &str) -> Result<()> {
+    async fn mark_failed(&self, _events: &[&SerializedEvent], _reason: &str) -> DomainResult<()> {
         // In-memory 简化：失败事件暂不重试
         Ok(())
     }
@@ -114,15 +118,15 @@ struct InMemoryReclaimer {
 
 #[async_trait::async_trait]
 impl EventReclaimer for InMemoryReclaimer {
-    async fn fetch_events(&self) -> Result<Vec<SerializedEvent>> {
+    async fn fetch_events(&self) -> DomainResult<Vec<SerializedEvent>> {
         Ok(self.failures.drain())
     }
 
-    async fn mark_reclaimed(&self, _events: &[&SerializedEvent]) -> Result<()> {
+    async fn mark_reclaimed(&self, _events: &[&SerializedEvent]) -> DomainResult<()> {
         Ok(())
     }
 
-    async fn mark_failed(&self, events: &[&SerializedEvent], _reason: &str) -> Result<()> {
+    async fn mark_failed(&self, events: &[&SerializedEvent], _reason: &str) -> DomainResult<()> {
         for ev in events {
             self.failures.push((*ev).clone());
         }
@@ -134,7 +138,7 @@ impl EventReclaimer for InMemoryReclaimer {
         _handler_name: &str,
         events: &[&SerializedEvent],
         _reason: &str,
-    ) -> Result<()> {
+    ) -> DomainResult<()> {
         for ev in events {
             self.failures.push((*ev).clone());
         }
@@ -155,10 +159,13 @@ struct PrintHandler {
 
 #[async_trait::async_trait]
 impl EventHandler for PrintHandler {
-    async fn handle(&self, event: &SerializedEvent) -> Result<()> {
+    async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
         if let Some(bad) = self.fail_on {
             if event.event_type() == bad {
-                return Err(anyhow!(format!("{} failed on {}", self.name, bad)));
+                return Err(DomainError::EventHandler {
+                    handler: self.name.to_string(),
+                    reason: format!("{} failed on {}", self.name, bad),
+                });
             }
         }
         println!(
@@ -199,7 +206,7 @@ fn mk_event(id: &str, ty: &str) -> SerializedEvent {
 }
 
 #[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<()> {
+async fn main() -> AnyResult<()> {
     println!("=== Eventing 引擎（内存版）示例 ===\n");
     // Bus
     let bus = Arc::new(InMemoryBus::new(1024));

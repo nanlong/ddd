@@ -1,9 +1,9 @@
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, DomainEvent, EventEnvelope, Metadata},
+    error::{DomainError, DomainResult},
     event_upcaster::EventUpcasterChain,
 };
-use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ where
             causation_id: envelope.context.causation_id().map(|s| s.to_string()),
             actor_type: envelope.context.actor_type().map(|s| s.to_string()),
             actor_id: envelope.context.actor_id().map(|s| s.to_string()),
-            occurred_at: envelope.metadata.occurred_at().clone(),
+            occurred_at: *envelope.metadata.occurred_at(),
             payload: serde_json::to_value(&envelope.payload)?,
         })
     }
@@ -148,13 +148,13 @@ where
     }
 }
 
-pub fn serialize_events<A>(events: &[EventEnvelope<A>]) -> Result<Vec<SerializedEvent>>
+pub fn serialize_events<A>(events: &[EventEnvelope<A>]) -> DomainResult<Vec<SerializedEvent>>
 where
     A: Aggregate,
 {
     let events = events
         .iter()
-        .map(|e| SerializedEvent::try_from(e))
+        .map(SerializedEvent::try_from)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(events)
@@ -163,7 +163,7 @@ where
 pub fn deserialize_events<A>(
     upcaster_chain: &EventUpcasterChain,
     events: Vec<SerializedEvent>,
-) -> Result<Vec<EventEnvelope<A>>>
+) -> DomainResult<Vec<EventEnvelope<A>>>
 where
     A: Aggregate,
 {
@@ -171,8 +171,9 @@ where
 
     let events = events
         .iter()
-        .map(|e| EventEnvelope::try_from(e))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(EventEnvelope::try_from)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(DomainError::from)?;
 
     Ok(events)
 }

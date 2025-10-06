@@ -1,12 +1,13 @@
 /// SnapshotRepository 示例
 /// 演示如何实现快照仓储接口，用于优化事件溯源性能
 /// 快照机制可以避免重放大量历史事件，直接从快照恢复聚合状态
-use anyhow::Result;
+use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
@@ -15,7 +16,6 @@ use ddd::persist::{
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
@@ -52,39 +52,6 @@ struct OrderItem {
     product_id: String,
     quantity: u32,
     price: i64,
-}
-
-#[derive(Debug)]
-enum OrderError {
-    InvalidId(String),
-    InvalidStatus,
-    ItemNotFound,
-    InvalidQuantity,
-}
-
-impl Display for OrderError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidId(msg) => write!(f, "invalid order id: {}", msg),
-            Self::InvalidStatus => write!(f, "invalid order status"),
-            Self::ItemNotFound => write!(f, "item not found"),
-            Self::InvalidQuantity => write!(f, "invalid quantity"),
-        }
-    }
-}
-
-impl std::error::Error for OrderError {}
-
-impl From<std::string::ParseError> for OrderError {
-    fn from(_: std::string::ParseError) -> Self {
-        Self::InvalidId("parse error".to_string())
-    }
-}
-
-impl From<anyhow::Error> for OrderError {
-    fn from(err: anyhow::Error) -> Self {
-        Self::InvalidId(err.to_string())
-    }
 }
 
 #[derive(Debug)]
@@ -195,7 +162,7 @@ impl Aggregate for OrderAggregate {
     type Id = String;
     type Command = OrderCommand;
     type Event = OrderEvent;
-    type Error = OrderError;
+    type Error = DomainError;
 
     fn new(aggregate_id: Self::Id) -> Self {
         Self {
@@ -223,10 +190,14 @@ impl Aggregate for OrderAggregate {
                 price,
             } => {
                 if quantity == 0 {
-                    return Err(OrderError::InvalidQuantity);
+                    return Err(DomainError::InvalidCommand {
+                        reason: "quantity must be positive".to_string(),
+                    });
                 }
                 if self.status != OrderStatus::Draft {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::ItemAdded {
                     id: Ulid::new().to_string(),
@@ -238,10 +209,14 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::RemoveItem { product_id } => {
                 if self.status != OrderStatus::Draft {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 if !self.items.iter().any(|item| item.product_id == product_id) {
-                    return Err(OrderError::ItemNotFound);
+                    return Err(DomainError::NotFound {
+                        reason: "item not found".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::ItemRemoved {
                     id: Ulid::new().to_string(),
@@ -251,7 +226,9 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Confirm => {
                 if self.status != OrderStatus::Draft {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::Confirmed {
                     id: Ulid::new().to_string(),
@@ -261,7 +238,9 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Pay => {
                 if self.status != OrderStatus::Confirmed {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::Paid {
                     id: Ulid::new().to_string(),
@@ -271,7 +250,9 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Ship => {
                 if self.status != OrderStatus::Paid {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::Shipped {
                     id: Ulid::new().to_string(),
@@ -281,7 +262,9 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Deliver => {
                 if self.status != OrderStatus::Shipped {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::Delivered {
                     id: Ulid::new().to_string(),
@@ -291,7 +274,9 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Cancel => {
                 if matches!(self.status, OrderStatus::Delivered | OrderStatus::Cancelled) {
-                    return Err(OrderError::InvalidStatus);
+                    return Err(DomainError::InvalidState {
+                        reason: "invalid order status".to_string(),
+                    });
                 }
                 Ok(vec![OrderEvent::Cancelled {
                     id: Ulid::new().to_string(),
@@ -382,7 +367,10 @@ struct InMemoryEventRepository {
 #[async_trait]
 impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
-    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>> {
+    async fn get_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
     }
@@ -392,7 +380,7 @@ impl EventRepository for InMemoryEventRepository {
         &self,
         aggregate_id: &str,
         last_version: usize,
-    ) -> Result<Vec<SerializedEvent>> {
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
             .get(aggregate_id)
@@ -406,7 +394,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    async fn save(&self, events: &[SerializedEvent]) -> Result<()> {
+    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -438,7 +426,7 @@ impl SnapshotRepository for InMemorySnapshotRepository {
         &self,
         aggregate_id: &str,
         version: Option<usize>,
-    ) -> Result<Option<SerializedSnapshot>> {
+    ) -> DomainResult<Option<SerializedSnapshot>> {
         let snapshots = self.snapshots.lock().unwrap();
         let key = (A::TYPE.to_string(), aggregate_id.to_string());
 
@@ -463,7 +451,7 @@ impl SnapshotRepository for InMemorySnapshotRepository {
     }
 
     /// 保存快照
-    async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> DomainResult<()> {
         let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
         let mut snapshots = self.snapshots.lock().unwrap();
 
@@ -516,7 +504,7 @@ where
     E: EventRepository,
     S: SnapshotRepository,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, OrderError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, DomainError> {
         // 1. 尝试从快照加载
         if let Some(snapshot) = self
             .snapshot_repo
@@ -565,7 +553,7 @@ where
         aggregate: &OrderAggregate,
         events: Vec<OrderEvent>,
         context: BusinessContext,
-    ) -> Result<Vec<EventEnvelope<OrderAggregate>>, OrderError> {
+    ) -> Result<Vec<EventEnvelope<OrderAggregate>>, DomainError> {
         let envelopes: Vec<EventEnvelope<OrderAggregate>> = events
             .into_iter()
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
@@ -579,7 +567,7 @@ where
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() -> AnyResult<()> {
     let event_repo = Arc::new(InMemoryEventRepository::default());
     let snapshot_repo = Arc::new(InMemorySnapshotRepository::default());
     let repo = Arc::new(OrderRepository::new(

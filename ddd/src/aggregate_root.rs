@@ -3,7 +3,6 @@ use crate::{
     domain_event::{BusinessContext, EventEnvelope},
     persist::AggregateRepository,
 };
-use anyhow::Result;
 use std::marker::PhantomData;
 
 pub struct AggregateRoot<A, R>
@@ -32,16 +31,9 @@ where
         aggregate_id: &A::Id,
         command: A::Command,
         context: BusinessContext,
-    ) -> Result<Vec<EventEnvelope<A>>> {
+    ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         // 从仓库加载聚合
-        let loaded = self.repo.load(aggregate_id.as_ref()).await.map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to load aggregate {} with id {}: {}",
-                A::TYPE,
-                aggregate_id,
-                e
-            )
-        })?;
+        let loaded = self.repo.load(aggregate_id.as_ref()).await?;
 
         // 如果不存在则创建新的聚合实例
         let mut aggregate = match loaded {
@@ -50,14 +42,7 @@ where
         };
 
         // 执行命令
-        let events = aggregate.execute(command).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to execute command on aggregate {} with id {}: {}",
-                A::TYPE,
-                aggregate_id,
-                e
-            )
-        })?;
+        let events = aggregate.execute(command)?;
 
         // 应用所有新生成的事件到聚合状态
         for event in &events {
@@ -65,18 +50,7 @@ where
         }
 
         // 保存聚合状态和未提交的事件
-        let event_envelopes = self
-            .repo
-            .save(&aggregate, events, context)
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to save aggregate {} with id {}: {}",
-                    A::TYPE,
-                    aggregate_id,
-                    e
-                )
-            })?;
+        let event_envelopes = self.repo.save(&aggregate, events, context).await?;
 
         Ok(event_envelopes)
     }

@@ -1,10 +1,10 @@
 use crate::{
     aggregate::Aggregate,
     domain_event::AggregateEvents,
+    error::DomainResult as Result,
     event_upcaster::EventUpcasterChain,
     persist::{SerializedEvent, deserialize_events},
 };
-use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 

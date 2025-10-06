@@ -14,14 +14,14 @@
 /// - v2: account.debited { amount: i64, currency: String } - 添加货币字段
 /// - v3: account.debited { minor_units: i64, currency: String } - 金额改为最小单位（分）
 /// - v4: account.withdrew { minor_units: i64, currency: String } - 重命名为 withdrew
-use anyhow::Result;
+use anyhow::Result as AnyResult;
 use ddd::aggregate::Aggregate;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd::persist::{SerializedEvent, deserialize_events, serialize_events};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 use ulid::Ulid;
 
 // ============================================================================
@@ -33,35 +33,6 @@ use ulid::Ulid;
 struct BankAccount {
     balance_minor_units: i64, // 余额（分）
     currency: String,
-}
-
-#[derive(Debug)]
-enum BankAccountError {
-    InvalidAmount,
-    SerializationError(String),
-}
-
-impl Display for BankAccountError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidAmount => write!(f, "invalid amount"),
-            Self::SerializationError(msg) => write!(f, "serialization error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for BankAccountError {}
-
-impl From<serde_json::Error> for BankAccountError {
-    fn from(err: serde_json::Error) -> Self {
-        Self::SerializationError(err.to_string())
-    }
-}
-
-impl From<anyhow::Error> for BankAccountError {
-    fn from(err: anyhow::Error) -> Self {
-        Self::SerializationError(err.to_string())
-    }
 }
 
 #[derive(Debug)]
@@ -84,8 +55,9 @@ enum BankAccountEvent {
 impl DomainEvent for BankAccountEvent {
     fn event_id(&self) -> String {
         match self {
-            BankAccountEvent::Deposited { id, .. }
-            | BankAccountEvent::Withdrew { id, .. } => id.clone(),
+            BankAccountEvent::Deposited { id, .. } | BankAccountEvent::Withdrew { id, .. } => {
+                id.clone()
+            }
         }
     }
     fn event_type(&self) -> String {
@@ -103,8 +75,12 @@ impl DomainEvent for BankAccountEvent {
 
     fn aggregate_version(&self) -> usize {
         match self {
-            BankAccountEvent::Deposited { aggregate_version, .. }
-            | BankAccountEvent::Withdrew { aggregate_version, .. } => *aggregate_version,
+            BankAccountEvent::Deposited {
+                aggregate_version, ..
+            }
+            | BankAccountEvent::Withdrew {
+                aggregate_version, ..
+            } => *aggregate_version,
         }
     }
 }
@@ -115,7 +91,7 @@ impl Aggregate for BankAccount {
     type Id = String;
     type Command = BankAccountCommand;
     type Event = BankAccountEvent;
-    type Error = BankAccountError;
+    type Error = DomainError;
 
     fn new(aggregate_id: Self::Id) -> Self {
         Self {
@@ -141,7 +117,9 @@ impl Aggregate for BankAccount {
                 currency,
             } => {
                 if minor_units <= 0 {
-                    return Err(BankAccountError::InvalidAmount);
+                    return Err(DomainError::InvalidCommand {
+                        reason: "amount must be positive".to_string(),
+                    });
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -203,12 +181,17 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
         event_type == "account.credited" && event_version == 1
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut payload = event.payload().clone();
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v1 missing amount"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountCreditedV1ToV2"),
+                reason: "v1 missing amount".to_string(),
+            })?;
 
         println!(
             "  [Upcaster V1->V2] amount={} -> amount={}, currency=CNY",
@@ -248,12 +231,17 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
         event_type == "account.credited" && event_version == 2
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut payload = event.payload().clone();
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v2 missing amount"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountCreditedV2ToV3"),
+                reason: "v2 missing amount".to_string(),
+            })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
@@ -300,16 +288,26 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
         event_type == "account.credited" && event_version == 3
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let payload = event.payload();
         let minor_units = payload
             .get("minor_units")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v3 missing minor_units"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountCreditedV3ToV4"),
+                reason: "v3 missing minor_units".to_string(),
+            })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("v3 missing currency"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountCreditedV3ToV4"),
+                reason: "v3 missing currency".to_string(),
+            })?;
 
         println!(
             "  [Upcaster V3->V4] Renaming account.credited to account.deposited ({} {})",
@@ -357,12 +355,17 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
         event_type == "account.debited" && event_version == 1
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut payload = event.payload().clone();
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v1 missing amount"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountDebitedV1ToV2"),
+                reason: "v1 missing amount".to_string(),
+            })?;
 
         println!(
             "  [Upcaster V1->V2] amount={} -> amount={}, currency=CNY (debited)",
@@ -401,12 +404,17 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
         event_type == "account.debited" && event_version == 2
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut payload = event.payload().clone();
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v2 missing amount"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountDebitedV2ToV3"),
+                reason: "v2 missing amount".to_string(),
+            })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
@@ -452,16 +460,26 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
         event_type == "account.debited" && event_version == 3
     }
 
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
+    fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let payload = event.payload();
         let minor_units = payload
             .get("minor_units")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow::anyhow!("v3 missing minor_units"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountDebitedV3ToV4"),
+                reason: "v3 missing minor_units".to_string(),
+            })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("v3 missing currency"))?;
+            .ok_or_else(|| DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AccountDebitedV3ToV4"),
+                reason: "v3 missing currency".to_string(),
+            })?;
 
         println!(
             "  [Upcaster V3->V4] Renaming account.debited to account.withdrew ({} {})",
@@ -631,19 +649,19 @@ fn create_withdraw(
 // 主函数
 // ============================================================================
 
-fn main() -> Result<()> {
+fn main() -> AnyResult<()> {
     println!("=== Event Upcasting 示例 ===\n");
 
     let account_id = "acc-001";
 
     // 构建 Upcaster Chain
     let chain = EventUpcasterChain::new()
-        .add(AccountCreditedV1ToV2)
-        .add(AccountCreditedV2ToV3)
-        .add(AccountCreditedV3ToV4)
-        .add(AccountDebitedV1ToV2)
-        .add(AccountDebitedV2ToV3)
-        .add(AccountDebitedV3ToV4);
+        .push(AccountCreditedV1ToV2)
+        .push(AccountCreditedV2ToV3)
+        .push(AccountCreditedV3ToV4)
+        .push(AccountDebitedV1ToV2)
+        .push(AccountDebitedV2ToV3)
+        .push(AccountDebitedV3ToV4);
 
     // 模拟从数据库读取历史事件（按时间顺序：v1 → v2 → v3 → v4）
     println!("原始事件（混合版本）:");

@@ -1,5 +1,4 @@
-use crate::{aggregate::Aggregate, persist::SerializedSnapshot};
-use anyhow::Result;
+use crate::{aggregate::Aggregate, error::DomainResult as Result, persist::SerializedSnapshot};
 use async_trait::async_trait;
 use std::sync::Arc;
 

@@ -114,11 +114,11 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let mut new_named: Punctuated<syn::Field, Token![,]> = Punctuated::new();
 
                 // 如果缺失则添加 id、version 字段
-                if !has_field_named(&fields_named, "id") {
+                if !has_field_named(fields_named, "id") {
                     new_named.push(syn::parse_quote! { id: #id_type });
                 }
 
-                if !has_field_named(&fields_named, "aggregate_version") {
+                if !has_field_named(fields_named, "aggregate_version") {
                     new_named.push(syn::parse_quote! { aggregate_version: usize });
                 }
 

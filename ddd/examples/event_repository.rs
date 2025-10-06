@@ -1,10 +1,11 @@
 /// EventRepository 示例
 /// 演示如何实现事件仓储接口，用于持久化和查询领域事件
-use anyhow::Result;
+use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
     AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
@@ -12,7 +13,6 @@ use ddd::persist::{
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
@@ -25,39 +25,6 @@ use ulid::Ulid;
 struct BankAccount {
     balance: i64,
     is_locked: bool,
-}
-
-#[derive(Debug)]
-enum BankAccountError {
-    InvalidId(String),
-    AccountLocked,
-    InsufficientBalance,
-    NegativeAmount,
-}
-
-impl Display for BankAccountError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidId(msg) => write!(f, "invalid account id: {}", msg),
-            Self::AccountLocked => write!(f, "account is locked"),
-            Self::InsufficientBalance => write!(f, "insufficient balance"),
-            Self::NegativeAmount => write!(f, "amount must be positive"),
-        }
-    }
-}
-
-impl std::error::Error for BankAccountError {}
-
-impl From<std::string::ParseError> for BankAccountError {
-    fn from(_: std::string::ParseError) -> Self {
-        Self::InvalidId("parse error".to_string())
-    }
-}
-
-impl From<anyhow::Error> for BankAccountError {
-    fn from(err: anyhow::Error) -> Self {
-        Self::InvalidId(err.to_string())
-    }
 }
 
 #[derive(Debug)]
@@ -96,14 +63,24 @@ impl DomainEvent for BankAccountEvent {
         .to_string()
     }
 
-    fn event_version(&self) -> usize { 1 }
+    fn event_version(&self) -> usize {
+        1
+    }
 
     fn aggregate_version(&self) -> usize {
         match self {
-            BankAccountEvent::Deposited { aggregate_version, .. }
-            | BankAccountEvent::Withdrawn { aggregate_version, .. }
-            | BankAccountEvent::Locked { aggregate_version, .. }
-            | BankAccountEvent::Unlocked { aggregate_version, .. } => *aggregate_version,
+            BankAccountEvent::Deposited {
+                aggregate_version, ..
+            }
+            | BankAccountEvent::Withdrawn {
+                aggregate_version, ..
+            }
+            | BankAccountEvent::Locked {
+                aggregate_version, ..
+            }
+            | BankAccountEvent::Unlocked {
+                aggregate_version, ..
+            } => *aggregate_version,
         }
     }
 }
@@ -114,7 +91,7 @@ impl Aggregate for BankAccount {
     type Id = String;
     type Command = BankAccountCommand;
     type Event = BankAccountEvent;
-    type Error = BankAccountError;
+    type Error = DomainError;
 
     fn new(aggregate_id: Self::Id) -> Self {
         Self {
@@ -137,10 +114,14 @@ impl Aggregate for BankAccount {
         match command {
             BankAccountCommand::Deposit { amount } => {
                 if amount <= 0 {
-                    return Err(BankAccountError::NegativeAmount);
+                    return Err(DomainError::InvalidCommand {
+                        reason: "amount must be positive".to_string(),
+                    });
                 }
                 if self.is_locked {
-                    return Err(BankAccountError::AccountLocked);
+                    return Err(DomainError::InvalidState {
+                        reason: "account is locked".to_string(),
+                    });
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -150,13 +131,19 @@ impl Aggregate for BankAccount {
             }
             BankAccountCommand::Withdraw { amount } => {
                 if amount <= 0 {
-                    return Err(BankAccountError::NegativeAmount);
+                    return Err(DomainError::InvalidCommand {
+                        reason: "amount must be positive".to_string(),
+                    });
                 }
                 if self.is_locked {
-                    return Err(BankAccountError::AccountLocked);
+                    return Err(DomainError::InvalidState {
+                        reason: "account is locked".to_string(),
+                    });
                 }
                 if self.balance < amount {
-                    return Err(BankAccountError::InsufficientBalance);
+                    return Err(DomainError::InvalidState {
+                        reason: "insufficient balance".to_string(),
+                    });
                 }
                 Ok(vec![BankAccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
@@ -190,22 +177,30 @@ impl Aggregate for BankAccount {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             BankAccountEvent::Deposited {
-                aggregate_version, amount, ..
+                aggregate_version,
+                amount,
+                ..
             } => {
                 self.balance += amount;
                 self.version = *aggregate_version;
             }
             BankAccountEvent::Withdrawn {
-                aggregate_version, amount, ..
+                aggregate_version,
+                amount,
+                ..
             } => {
                 self.balance -= amount;
                 self.version = *aggregate_version;
             }
-            BankAccountEvent::Locked { aggregate_version, .. } => {
+            BankAccountEvent::Locked {
+                aggregate_version, ..
+            } => {
                 self.is_locked = true;
                 self.version = *aggregate_version;
             }
-            BankAccountEvent::Unlocked { aggregate_version, .. } => {
+            BankAccountEvent::Unlocked {
+                aggregate_version, ..
+            } => {
                 self.is_locked = false;
                 self.version = *aggregate_version;
             }
@@ -226,7 +221,10 @@ struct InMemoryEventRepository {
 #[async_trait]
 impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
-    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>> {
+    async fn get_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
     }
@@ -236,7 +234,7 @@ impl EventRepository for InMemoryEventRepository {
         &self,
         aggregate_id: &str,
         last_version: usize,
-    ) -> Result<Vec<SerializedEvent>> {
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
             .get(aggregate_id)
@@ -250,7 +248,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    async fn save(&self, events: &[SerializedEvent]) -> Result<()> {
+    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -298,7 +296,7 @@ impl<E> AggregateRepository<BankAccount> for BankAccountRepository<BankAccount, 
 where
     E: EventRepository,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, BankAccountError> {
+    async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, DomainError> {
         let serialized = self
             .event_repo
             .get_events::<BankAccount>(aggregate_id)
@@ -321,7 +319,7 @@ where
         aggregate: &BankAccount,
         events: Vec<BankAccountEvent>,
         context: BusinessContext,
-    ) -> Result<Vec<EventEnvelope<BankAccount>>, BankAccountError> {
+    ) -> Result<Vec<EventEnvelope<BankAccount>>, DomainError> {
         let envelopes: Vec<EventEnvelope<BankAccount>> = events
             .into_iter()
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
@@ -339,7 +337,7 @@ where
 // ============================================================================
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() -> AnyResult<()> {
     let event_repo = Arc::new(InMemoryEventRepository::default());
     let repo = Arc::new(BankAccountRepository::new(event_repo.clone()));
     let root = AggregateRoot::<BankAccount, _>::new(repo.clone());

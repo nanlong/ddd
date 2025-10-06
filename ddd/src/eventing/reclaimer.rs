@@ -1,5 +1,4 @@
-use crate::persist::SerializedEvent;
-use anyhow::Result;
+use crate::{error::DomainResult as Result, persist::SerializedEvent};
 use async_trait::async_trait;
 
 /// 事件回收器：拉取失败/超时/漏投递事件进行补偿

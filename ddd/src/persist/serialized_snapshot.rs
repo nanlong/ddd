@@ -1,5 +1,7 @@
-use crate::aggregate::Aggregate;
-use anyhow::Result;
+use crate::{
+    aggregate::Aggregate,
+    error::{DomainError, DomainResult as Result},
+};
 use bon::Builder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,11 +37,10 @@ impl SerializedSnapshot {
         A: Aggregate,
     {
         if A::TYPE != self.aggregate_type {
-            anyhow::bail!(
-                "Aggregate type mismatch: expected {}, found {}",
-                A::TYPE,
-                self.aggregate_type
-            );
+            return Err(DomainError::TypeMismatch {
+                expected: A::TYPE.to_string(),
+                found: self.aggregate_type.clone(),
+            });
         }
 
         let aggregate = serde_json::from_value(self.payload.clone())?;
@@ -47,7 +48,7 @@ impl SerializedSnapshot {
     }
 
     /// 从聚合实例创建快照
-    pub fn from_aggregate<A>(aggregate: &A) -> Result<Self, serde_json::Error>
+    pub fn from_aggregate<A>(aggregate: &A) -> Result<Self>
     where
         A: Aggregate,
     {
