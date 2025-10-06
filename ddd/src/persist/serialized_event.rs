@@ -100,34 +100,20 @@ where
     type Error = serde_json::Error;
 
     fn try_from(envelope: &EventEnvelope<A>) -> Result<Self, Self::Error> {
-        let payload_value = serde_json::to_value(&envelope.payload)?;
-
-        let event_id = payload_value
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-
-        let aggregate_version = payload_value
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize)
-            .unwrap_or(0);
-
         Ok(SerializedEvent {
-            event_id,
+            event_id: envelope.payload.event_id(),
             event_type: envelope.payload.event_type(),
             event_version: envelope.payload.event_version(),
             sequence_number: None,
             aggregate_id: envelope.metadata.aggregate_id().to_string(),
             aggregate_type: envelope.metadata.aggregate_type().to_string(),
-            aggregate_version,
+            aggregate_version: envelope.payload.aggregate_version(),
             correlation_id: envelope.context.correlation_id().map(|s| s.to_string()),
             causation_id: envelope.context.causation_id().map(|s| s.to_string()),
             actor_type: envelope.context.actor_type().map(|s| s.to_string()),
             actor_id: envelope.context.actor_id().map(|s| s.to_string()),
             occurred_at: envelope.metadata.occurred_at().clone(),
-            payload: payload_value,
+            payload: serde_json::to_value(&envelope.payload)?,
         })
     }
 }

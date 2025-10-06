@@ -64,6 +64,13 @@ enum AccountEvent {
 }
 
 impl DomainEvent for AccountEvent {
+    fn event_id(&self) -> String {
+        match self {
+            AccountEvent::Opened { id, .. }
+            | AccountEvent::Deposited { id, .. }
+            | AccountEvent::Withdrawn { id, .. } => id.clone(),
+        }
+    }
     fn event_type(&self) -> String {
         match self {
             AccountEvent::Opened { .. } => "account.opened",
@@ -73,11 +80,13 @@ impl DomainEvent for AccountEvent {
         .to_string()
     }
 
-    fn event_version(&self) -> usize {
+    fn event_version(&self) -> usize { 1 }
+
+    fn aggregate_version(&self) -> usize {
         match self {
-            AccountEvent::Opened { .. } => 3,
-            AccountEvent::Deposited { .. } => 1,
-            AccountEvent::Withdrawn { .. } => 1,
+            AccountEvent::Opened { aggregate_version, .. }
+            | AccountEvent::Deposited { aggregate_version, .. }
+            | AccountEvent::Withdrawn { aggregate_version, .. } => *aggregate_version,
         }
     }
 }
@@ -114,7 +123,7 @@ impl Aggregate for Account {
                 }
                 let evt = AccountEvent::Opened {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     initial_balance,
                 };
                 Ok(vec![evt])
@@ -125,7 +134,7 @@ impl Aggregate for Account {
                 }
                 let evt = AccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     amount,
                 };
                 Ok(vec![evt])
@@ -139,7 +148,7 @@ impl Aggregate for Account {
                 }
                 let evt = AccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     amount,
                 };
                 Ok(vec![evt])
@@ -150,24 +159,24 @@ impl Aggregate for Account {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             AccountEvent::Opened {
-                version,
+                aggregate_version,
                 initial_balance,
                 ..
             } => {
                 self.balance = *initial_balance;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
             AccountEvent::Deposited {
-                version, amount, ..
+                aggregate_version, amount, ..
             } => {
                 self.balance += *amount;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
             AccountEvent::Withdrawn {
-                version, amount, ..
+                aggregate_version, amount, ..
             } => {
                 self.balance -= *amount;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
         }
     }

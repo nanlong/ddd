@@ -78,6 +78,14 @@ enum BankAccountEvent {
 }
 
 impl DomainEvent for BankAccountEvent {
+    fn event_id(&self) -> String {
+        match self {
+            BankAccountEvent::Deposited { id, .. }
+            | BankAccountEvent::Withdrawn { id, .. }
+            | BankAccountEvent::Locked { id, .. }
+            | BankAccountEvent::Unlocked { id, .. } => id.clone(),
+        }
+    }
     fn event_type(&self) -> String {
         match self {
             BankAccountEvent::Deposited { .. } => "bank_account.deposited",
@@ -88,12 +96,14 @@ impl DomainEvent for BankAccountEvent {
         .to_string()
     }
 
-    fn event_version(&self) -> usize {
+    fn event_version(&self) -> usize { 1 }
+
+    fn aggregate_version(&self) -> usize {
         match self {
-            BankAccountEvent::Deposited { version, .. }
-            | BankAccountEvent::Withdrawn { version, .. }
-            | BankAccountEvent::Locked { version, .. }
-            | BankAccountEvent::Unlocked { version, .. } => *version,
+            BankAccountEvent::Deposited { aggregate_version, .. }
+            | BankAccountEvent::Withdrawn { aggregate_version, .. }
+            | BankAccountEvent::Locked { aggregate_version, .. }
+            | BankAccountEvent::Unlocked { aggregate_version, .. } => *aggregate_version,
         }
     }
 }
@@ -134,7 +144,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     amount,
                 }])
             }
@@ -150,7 +160,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     amount,
                 }])
             }
@@ -160,7 +170,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Locked {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     reason: "Manual lock".to_string(),
                 }])
             }
@@ -170,7 +180,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Unlocked {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     reason: "Manual unlock".to_string(),
                 }])
             }
@@ -180,24 +190,24 @@ impl Aggregate for BankAccount {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             BankAccountEvent::Deposited {
-                version, amount, ..
+                aggregate_version, amount, ..
             } => {
                 self.balance += amount;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
             BankAccountEvent::Withdrawn {
-                version, amount, ..
+                aggregate_version, amount, ..
             } => {
                 self.balance -= amount;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            BankAccountEvent::Locked { version, .. } => {
+            BankAccountEvent::Locked { aggregate_version, .. } => {
                 self.is_locked = true;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            BankAccountEvent::Unlocked { version, .. } => {
+            BankAccountEvent::Unlocked { aggregate_version, .. } => {
                 self.is_locked = false;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
         }
     }

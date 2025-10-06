@@ -117,8 +117,9 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if !has_field_named(&fields_named, "id") {
                     new_named.push(syn::parse_quote! { id: #id_type });
                 }
-                if !has_field_named(&fields_named, "version") {
-                    new_named.push(syn::parse_quote! { version: usize });
+
+                if !has_field_named(&fields_named, "aggregate_version") {
+                    new_named.push(syn::parse_quote! { aggregate_version: usize });
                 }
 
                 // 保留原有字段顺序

@@ -82,6 +82,12 @@ enum BankAccountEvent {
 }
 
 impl DomainEvent for BankAccountEvent {
+    fn event_id(&self) -> String {
+        match self {
+            BankAccountEvent::Deposited { id, .. }
+            | BankAccountEvent::Withdrew { id, .. } => id.clone(),
+        }
+    }
     fn event_type(&self) -> String {
         match self {
             BankAccountEvent::Deposited { .. } => "account.deposited",
@@ -93,6 +99,13 @@ impl DomainEvent for BankAccountEvent {
     fn event_version(&self) -> usize {
         // 返回事件模式版本，所有 v4 事件都返回 4
         4
+    }
+
+    fn aggregate_version(&self) -> usize {
+        match self {
+            BankAccountEvent::Deposited { aggregate_version, .. }
+            | BankAccountEvent::Withdrew { aggregate_version, .. } => *aggregate_version,
+        }
     }
 }
 
@@ -132,7 +145,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     minor_units,
                     currency,
                 }])
@@ -143,7 +156,7 @@ impl Aggregate for BankAccount {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             BankAccountEvent::Deposited {
-                version,
+                aggregate_version,
                 minor_units,
                 currency,
                 ..
@@ -154,24 +167,24 @@ impl Aggregate for BankAccount {
                 }
                 self.balance_minor_units += minor_units;
                 // 如果事件中的 version 是占位值 0，则自动递增；否则使用事件中的值
-                self.version = if *version == 0 {
+                self.version = if *aggregate_version == 0 {
                     self.version + 1
                 } else {
-                    *version
+                    *aggregate_version
                 };
             }
             BankAccountEvent::Withdrew {
-                version,
+                aggregate_version,
                 minor_units,
                 ..
             } => {
                 // 取款：减少余额
                 self.balance_minor_units -= minor_units;
                 // 如果事件中的 version 是占位值 0，则自动递增；否则使用事件中的值
-                self.version = if *version == 0 {
+                self.version = if *aggregate_version == 0 {
                     self.version + 1
                 } else {
-                    *version
+                    *aggregate_version
                 };
             }
         }
@@ -686,7 +699,7 @@ fn main() -> Result<()> {
     println!("新事件序列化演示:");
     let new_event = BankAccountEvent::Deposited {
         id: Ulid::new().to_string(),
-        version: account.version() + 1,
+        aggregate_version: account.version() + 1,
         minor_units: 2000,
         currency: "CNY".to_string(),
     };

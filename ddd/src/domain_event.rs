@@ -7,9 +7,13 @@ use std::{fmt, slice::Iter, vec::IntoIter};
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
 {
+    fn event_id(&self) -> String;
+
     fn event_type(&self) -> String;
 
     fn event_version(&self) -> usize;
+
+    fn aggregate_version(&self) -> usize;
 }
 
 /// 元数据

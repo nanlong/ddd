@@ -133,6 +133,18 @@ enum OrderEvent {
 }
 
 impl DomainEvent for OrderEvent {
+    fn event_id(&self) -> String {
+        match self {
+            OrderEvent::ItemAdded { id, .. }
+            | OrderEvent::ItemRemoved { id, .. }
+            | OrderEvent::Confirmed { id, .. }
+            | OrderEvent::Paid { id, .. }
+            | OrderEvent::Shipped { id, .. }
+            | OrderEvent::Delivered { id, .. }
+            | OrderEvent::Cancelled { id, .. } => id.clone(),
+        }
+    }
+
     fn event_type(&self) -> String {
         match self {
             OrderEvent::ItemAdded { .. } => "order.item_added",
@@ -147,14 +159,32 @@ impl DomainEvent for OrderEvent {
     }
 
     fn event_version(&self) -> usize {
+        1
+    }
+
+    fn aggregate_version(&self) -> usize {
         match self {
-            OrderEvent::ItemAdded { version, .. }
-            | OrderEvent::ItemRemoved { version, .. }
-            | OrderEvent::Confirmed { version, .. }
-            | OrderEvent::Paid { version, .. }
-            | OrderEvent::Shipped { version, .. }
-            | OrderEvent::Delivered { version, .. }
-            | OrderEvent::Cancelled { version, .. } => *version,
+            OrderEvent::ItemAdded {
+                aggregate_version, ..
+            }
+            | OrderEvent::ItemRemoved {
+                aggregate_version, ..
+            }
+            | OrderEvent::Confirmed {
+                aggregate_version, ..
+            }
+            | OrderEvent::Paid {
+                aggregate_version, ..
+            }
+            | OrderEvent::Shipped {
+                aggregate_version, ..
+            }
+            | OrderEvent::Delivered {
+                aggregate_version, ..
+            }
+            | OrderEvent::Cancelled {
+                aggregate_version, ..
+            } => *aggregate_version,
         }
     }
 }
@@ -200,7 +230,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::ItemAdded {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     product_id,
                     quantity,
                     price,
@@ -215,7 +245,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::ItemRemoved {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     product_id,
                 }])
             }
@@ -225,7 +255,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Confirmed {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     confirmed_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -235,7 +265,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Paid {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     paid_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -245,7 +275,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Shipped {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     shipped_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -255,7 +285,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Delivered {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     delivered_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -265,7 +295,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Cancelled {
                     id: Ulid::new().to_string(),
-                    version: self.version() + 1,
+                    aggregate_version: self.version() + 1,
                     cancelled_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -275,7 +305,7 @@ impl Aggregate for OrderAggregate {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             OrderEvent::ItemAdded {
-                version,
+                aggregate_version,
                 product_id,
                 quantity,
                 price,
@@ -287,10 +317,10 @@ impl Aggregate for OrderAggregate {
                     price: *price,
                 });
                 self.total_amount += price * (*quantity as i64);
-                self.version = *version;
+                self.version = *aggregate_version;
             }
             OrderEvent::ItemRemoved {
-                version,
+                aggregate_version,
                 product_id,
                 ..
             } => {
@@ -298,27 +328,37 @@ impl Aggregate for OrderAggregate {
                     let item = self.items.remove(pos);
                     self.total_amount -= item.price * (item.quantity as i64);
                 }
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            OrderEvent::Confirmed { version, .. } => {
+            OrderEvent::Confirmed {
+                aggregate_version, ..
+            } => {
                 self.status = OrderStatus::Confirmed;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            OrderEvent::Paid { version, .. } => {
+            OrderEvent::Paid {
+                aggregate_version, ..
+            } => {
                 self.status = OrderStatus::Paid;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            OrderEvent::Shipped { version, .. } => {
+            OrderEvent::Shipped {
+                aggregate_version, ..
+            } => {
                 self.status = OrderStatus::Shipped;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            OrderEvent::Delivered { version, .. } => {
+            OrderEvent::Delivered {
+                aggregate_version, ..
+            } => {
                 self.status = OrderStatus::Delivered;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
-            OrderEvent::Cancelled { version, .. } => {
+            OrderEvent::Cancelled {
+                aggregate_version, ..
+            } => {
                 self.status = OrderStatus::Cancelled;
-                self.version = *version;
+                self.version = *aggregate_version;
             }
         }
     }
