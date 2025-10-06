@@ -1,3 +1,5 @@
+/// Account 聚合示例
+/// 演示基于命令驱动的事件溯源：打开账户、存取款等
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
@@ -9,6 +11,10 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
+
+// ============================================================================
+// 领域模型定义
+// ============================================================================
 
 #[aggregate]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -207,6 +213,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    println!("=== Account 聚合示例 ===\n");
     let repo = InMemoryAccountRepo::default();
     let root = AggregateRoot::<Account, _>::new(repo.clone());
     let id = String::from("acc-1");
@@ -222,7 +229,7 @@ async fn main() {
         )
         .await
         .unwrap();
-    println!("opened: {} events", events.len());
+    println!("✅ 开户，产生 {} 个事件", events.len());
     println!("events: {:?}", events);
 
     // 存款
@@ -234,7 +241,7 @@ async fn main() {
         )
         .await
         .unwrap();
-    println!("deposited: {} events", events.len());
+    println!("✅ 存款 +500，产生 {} 个事件", events.len());
     println!("events: {:?}", events);
 
     // 取款
@@ -246,15 +253,16 @@ async fn main() {
         )
         .await
         .unwrap();
-    println!("withdrawn: {} events", events.len());
+    println!("✅ 取款 -200，产生 {} 个事件", events.len());
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
     let loaded = repo.load(&id).await.unwrap().unwrap();
+    println!("\n--- 重新加载聚合 ---");
     println!(
-        "reloaded: id={}, balance={}, version={}",
+        "聚合: id={}, 版本={}, 余额={}",
         loaded.id(),
-        loaded.balance,
-        loaded.version()
+        loaded.version(),
+        loaded.balance
     );
 }

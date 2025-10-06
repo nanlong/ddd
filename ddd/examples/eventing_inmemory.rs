@@ -1,4 +1,6 @@
-use anyhow::{Result, anyhow};
+/// Eventing 引擎（内存版）示例
+/// 展示 Outbox -> Bus -> Handlers -> Reclaimer 的闭环，以及 handler 失败后的补偿重投
+use anyhow::{anyhow, Result};
 use chrono::Utc;
 use ddd::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
@@ -14,7 +16,9 @@ use std::{
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 
-// ---------------- In-memory EventBus ----------------
+// ============================================================================
+// 内存总线实现（EventBus）
+// ============================================================================
 
 #[derive(Clone)]
 struct InMemoryBus {
@@ -42,7 +46,9 @@ impl EventBus for InMemoryBus {
     }
 }
 
-// ---------------- In-memory Deliverer (Outbox) ----------------
+// ============================================================================
+// 内存 Outbox（EventDeliverer）
+// ============================================================================
 
 #[derive(Clone, Default)]
 struct InMemoryOutbox {
@@ -56,9 +62,7 @@ impl InMemoryOutbox {
 
     fn drain(&self) -> Vec<SerializedEvent> {
         let mut g = self.inner.lock().unwrap();
-        let v = g.clone();
-        g.clear();
-        v
+        std::mem::take(&mut *g)
     }
 }
 
@@ -83,7 +87,9 @@ impl EventDeliverer for InMemoryDeliverer {
     }
 }
 
-// ---------------- In-memory Reclaimer (Failures) ----------------
+// ============================================================================
+// 内存失败存储（EventReclaimer）
+// ============================================================================
 
 #[derive(Clone, Default)]
 struct InMemoryFailures {
@@ -96,9 +102,7 @@ impl InMemoryFailures {
     }
     fn drain(&self) -> Vec<SerializedEvent> {
         let mut g = self.inner.lock().unwrap();
-        let v = g.clone();
-        g.clear();
-        v
+        std::mem::take(&mut *g)
     }
 }
 
@@ -137,7 +141,9 @@ impl EventReclaimer for InMemoryReclaimer {
     }
 }
 
-// ---------------- Example Handlers ----------------
+// ============================================================================
+// 示例处理器（EventHandler）
+// ============================================================================
 
 #[derive(Clone)]
 struct PrintHandler {
@@ -172,7 +178,9 @@ impl EventHandler for PrintHandler {
     }
 }
 
-// ---------------- Utility ----------------
+// ============================================================================
+// 工具函数
+// ============================================================================
 
 fn mk_event(id: &str, ty: &str) -> SerializedEvent {
     SerializedEvent::builder()
@@ -191,6 +199,7 @@ fn mk_event(id: &str, ty: &str) -> SerializedEvent {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
+    println!("=== Eventing 引擎（内存版）示例 ===\n");
     // Bus
     let bus = Arc::new(InMemoryBus::new(1024));
 
@@ -237,14 +246,17 @@ async fn main() -> Result<()> {
     );
 
     let handle = engine.start();
+    println!("✅ 引擎已启动");
 
     // 演示在运行中继续塞入事件
     tokio::time::sleep(Duration::from_millis(300)).await;
     outbox.push(mk_event("e3", "UserCreated"));
     outbox.push(mk_event("e4", "UserDeleted"));
+    println!("✅ 追加事件: e3(UserCreated), e4(UserDeleted)");
 
     tokio::time::sleep(Duration::from_secs(2)).await;
     handle.shutdown();
     handle.join().await;
+    println!("\n✅ 优雅关闭完成");
     Ok(())
 }
