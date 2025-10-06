@@ -1,7 +1,8 @@
 use crate::{
     aggregate::Aggregate,
-    domain_event::{AggregateEvents, EventEnvelope},
-    persist::SerializedEvent,
+    domain_event::AggregateEvents,
+    event_upcaster::EventUpcasterChain,
+    persist::{SerializedEvent, deserialize_events},
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -22,18 +23,15 @@ pub trait EventRepository: Send + Sync {
 
 #[async_trait]
 pub trait EventRepositoryExt: EventRepository {
-    async fn get_aggregate_events<A: Aggregate>(
+    /// 拉取并上抬（Upcast）指定聚合的全部事件，返回 `AggregateEvents`
+    async fn get_aggregate_events_upcasted<A: Aggregate>(
         &self,
         aggregate_id: &str,
+        upcaster_chain: &EventUpcasterChain,
     ) -> Result<AggregateEvents<A>> {
-        let events = self
-            .get_events::<A>(aggregate_id)
-            .await?
-            .iter()
-            .map(|e| EventEnvelope::<A>::try_from(e))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(AggregateEvents::new(events))
+        let serialized = self.get_events::<A>(aggregate_id).await?;
+        let envelopes = deserialize_events::<A>(upcaster_chain, serialized)?;
+        Ok(AggregateEvents::new(envelopes))
     }
 }
 

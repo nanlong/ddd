@@ -4,7 +4,9 @@ mod serialized_event;
 mod serialized_snapshot;
 mod snapshot_repository;
 
-pub use aggregate_repository::AggregateRepository;
+pub use aggregate_repository::{
+    AggregateRepository, EventStoreAggregateRepository, SnapshottingAggregateRepository,
+};
 pub use event_repository::{EventRepository, EventRepositoryExt};
 pub use serialized_event::{SerializedEvent, deserialize_events, serialize_events};
 pub use serialized_snapshot::SerializedSnapshot;
