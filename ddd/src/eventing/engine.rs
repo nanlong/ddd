@@ -156,7 +156,7 @@ impl EventEngine {
                 }
                 maybe_event = stream.next() => {
                     match maybe_event {
-                        Some(event) => {
+                        Some(Ok(event)) => {
                             let merged = registry.matching(event.event_type());
                             if merged.is_empty() { continue; }
                             let tasks = merged.into_iter();
@@ -179,6 +179,7 @@ impl EventEngine {
                         None => {
                             break;
                         }
+                        _ => { /* 忽略错误，继续处理下一个事件 */ }
                     }
                 }
             }

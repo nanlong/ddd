@@ -1,6 +1,6 @@
 /// Eventing 引擎（内存版）示例
 /// 展示 Outbox -> Bus -> Handlers -> Reclaimer 的闭环，以及 handler 失败后的补偿重投
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use ddd::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
@@ -39,9 +39,10 @@ impl EventBus for InMemoryBus {
         Ok(())
     }
 
-    async fn subscribe(&self) -> BoxStream<'static, SerializedEvent> {
+    async fn subscribe(&self) -> BoxStream<'static, Result<SerializedEvent>> {
         let rx = self.tx.subscribe();
-        let stream = BroadcastStream::new(rx).filter_map(|r| futures_util::future::ready(r.ok()));
+        let stream = BroadcastStream::new(rx)
+            .map(|r| r.map_err(|e| anyhow!(e.to_string())));
         Box::pin(stream)
     }
 }
