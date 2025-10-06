@@ -16,5 +16,5 @@ pub trait EventBus: Send + Sync {
     }
 
     /// 返回一个 'static 生命周期的事件流，便于在 tokio::spawn 中使用
-    async fn subscribe(&self) -> BoxStream<'static, SerializedEvent>;
+    async fn subscribe(&self) -> BoxStream<'static, Result<SerializedEvent>>;
 }
