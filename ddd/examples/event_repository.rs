@@ -4,7 +4,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
@@ -35,54 +35,17 @@ enum BankAccountCommand {
     Unlock,
 }
 
-#[event]
+#[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
+    #[event_type = "bank_account.deposited"]
     Deposited { amount: i64 },
+    #[event_type = "bank_account.withdrawn"]
     Withdrawn { amount: i64 },
+    #[event_type = "bank_account.locked"]
     Locked { reason: String },
+    #[event_type = "bank_account.unlocked"]
     Unlocked { reason: String },
-}
-
-impl DomainEvent for BankAccountEvent {
-    fn event_id(&self) -> String {
-        match self {
-            BankAccountEvent::Deposited { id, .. }
-            | BankAccountEvent::Withdrawn { id, .. }
-            | BankAccountEvent::Locked { id, .. }
-            | BankAccountEvent::Unlocked { id, .. } => id.clone(),
-        }
-    }
-    fn event_type(&self) -> String {
-        match self {
-            BankAccountEvent::Deposited { .. } => "bank_account.deposited",
-            BankAccountEvent::Withdrawn { .. } => "bank_account.withdrawn",
-            BankAccountEvent::Locked { .. } => "bank_account.locked",
-            BankAccountEvent::Unlocked { .. } => "bank_account.unlocked",
-        }
-        .to_string()
-    }
-
-    fn event_version(&self) -> usize {
-        1
-    }
-
-    fn aggregate_version(&self) -> usize {
-        match self {
-            BankAccountEvent::Deposited {
-                aggregate_version, ..
-            }
-            | BankAccountEvent::Withdrawn {
-                aggregate_version, ..
-            }
-            | BankAccountEvent::Locked {
-                aggregate_version, ..
-            }
-            | BankAccountEvent::Unlocked {
-                aggregate_version, ..
-            } => *aggregate_version,
-        }
-    }
 }
 
 impl Aggregate for BankAccount {

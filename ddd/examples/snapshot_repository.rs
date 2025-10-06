@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
@@ -71,89 +71,27 @@ enum OrderCommand {
     Cancel,
 }
 
-#[event]
+#[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum OrderEvent {
+    #[event_type = "order.item_added"]
     ItemAdded {
         product_id: String,
         quantity: u32,
         price: i64,
     },
-    ItemRemoved {
-        product_id: String,
-    },
-    Confirmed {
-        confirmed_at: i64,
-    },
-    Paid {
-        paid_at: i64,
-    },
-    Shipped {
-        shipped_at: i64,
-    },
-    Delivered {
-        delivered_at: i64,
-    },
-    Cancelled {
-        cancelled_at: i64,
-    },
-}
-
-impl DomainEvent for OrderEvent {
-    fn event_id(&self) -> String {
-        match self {
-            OrderEvent::ItemAdded { id, .. }
-            | OrderEvent::ItemRemoved { id, .. }
-            | OrderEvent::Confirmed { id, .. }
-            | OrderEvent::Paid { id, .. }
-            | OrderEvent::Shipped { id, .. }
-            | OrderEvent::Delivered { id, .. }
-            | OrderEvent::Cancelled { id, .. } => id.clone(),
-        }
-    }
-
-    fn event_type(&self) -> String {
-        match self {
-            OrderEvent::ItemAdded { .. } => "order.item_added",
-            OrderEvent::ItemRemoved { .. } => "order.item_removed",
-            OrderEvent::Confirmed { .. } => "order.confirmed",
-            OrderEvent::Paid { .. } => "order.paid",
-            OrderEvent::Shipped { .. } => "order.shipped",
-            OrderEvent::Delivered { .. } => "order.delivered",
-            OrderEvent::Cancelled { .. } => "order.cancelled",
-        }
-        .to_string()
-    }
-
-    fn event_version(&self) -> usize {
-        1
-    }
-
-    fn aggregate_version(&self) -> usize {
-        match self {
-            OrderEvent::ItemAdded {
-                aggregate_version, ..
-            }
-            | OrderEvent::ItemRemoved {
-                aggregate_version, ..
-            }
-            | OrderEvent::Confirmed {
-                aggregate_version, ..
-            }
-            | OrderEvent::Paid {
-                aggregate_version, ..
-            }
-            | OrderEvent::Shipped {
-                aggregate_version, ..
-            }
-            | OrderEvent::Delivered {
-                aggregate_version, ..
-            }
-            | OrderEvent::Cancelled {
-                aggregate_version, ..
-            } => *aggregate_version,
-        }
-    }
+    #[event_type = "order.item_removed"]
+    ItemRemoved { product_id: String },
+    #[event_type = "order.confirmed"]
+    Confirmed { confirmed_at: i64 },
+    #[event_type = "order.paid"]
+    Paid { paid_at: i64 },
+    #[event_type = "order.shipped"]
+    Shipped { shipped_at: i64 },
+    #[event_type = "order.delivered"]
+    Delivered { delivered_at: i64 },
+    #[event_type = "order.cancelled"]
+    Cancelled { cancelled_at: i64 },
 }
 
 impl Aggregate for OrderAggregate {

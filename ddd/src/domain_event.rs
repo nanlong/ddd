@@ -150,7 +150,6 @@ where
     pub fn iter(&self) -> Iter<'_, EventEnvelope<A>> {
         self.events.iter()
     }
-
 }
 
 impl<A> IntoIterator for AggregateEvents<A>

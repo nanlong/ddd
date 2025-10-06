@@ -16,7 +16,7 @@
 /// - v4: account.withdrew { minor_units: i64, currency: String } - 重命名为 withdrew
 use anyhow::Result as AnyResult;
 use ddd::aggregate::Aggregate;
-use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd::persist::{SerializedEvent, deserialize_events, serialize_events};
@@ -42,47 +42,14 @@ enum BankAccountCommand {
 }
 
 // 当前版本的事件（v4）
-#[event]
+#[event(version = 4)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
-    #[serde(rename = "account.deposited")]
+    #[event_type = "account.deposited"]
     Deposited { minor_units: i64, currency: String },
 
-    #[serde(rename = "account.withdrew")]
+    #[event_type = "account.withdrew"]
     Withdrew { minor_units: i64, currency: String },
-}
-
-impl DomainEvent for BankAccountEvent {
-    fn event_id(&self) -> String {
-        match self {
-            BankAccountEvent::Deposited { id, .. } | BankAccountEvent::Withdrew { id, .. } => {
-                id.clone()
-            }
-        }
-    }
-    fn event_type(&self) -> String {
-        match self {
-            BankAccountEvent::Deposited { .. } => "account.deposited",
-            BankAccountEvent::Withdrew { .. } => "account.withdrew",
-        }
-        .to_string()
-    }
-
-    fn event_version(&self) -> usize {
-        // 返回事件模式版本，所有 v4 事件都返回 4
-        4
-    }
-
-    fn aggregate_version(&self) -> usize {
-        match self {
-            BankAccountEvent::Deposited {
-                aggregate_version, ..
-            }
-            | BankAccountEvent::Withdrew {
-                aggregate_version, ..
-            } => *aggregate_version,
-        }
-    }
 }
 
 impl Aggregate for BankAccount {

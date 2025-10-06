@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, DomainEvent, EventEnvelope};
+use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::DomainError;
 use ddd::persist::AggregateRepository;
 use ddd_macros::{aggregate, event};
@@ -29,48 +29,15 @@ enum AccountCommand {
     Withdraw { amount: usize },
 }
 
-#[event]
+#[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum AccountEvent {
+    #[event_type = "account.opened"]
     Opened { initial_balance: usize },
+    #[event_type = "account.deposited"]
     Deposited { amount: usize },
+    #[event_type = "account.withdrawn"]
     Withdrawn { amount: usize },
-}
-
-impl DomainEvent for AccountEvent {
-    fn event_id(&self) -> String {
-        match self {
-            AccountEvent::Opened { id, .. }
-            | AccountEvent::Deposited { id, .. }
-            | AccountEvent::Withdrawn { id, .. } => id.clone(),
-        }
-    }
-    fn event_type(&self) -> String {
-        match self {
-            AccountEvent::Opened { .. } => "account.opened",
-            AccountEvent::Deposited { .. } => "account.deposited",
-            AccountEvent::Withdrawn { .. } => "account.withdrawn",
-        }
-        .to_string()
-    }
-
-    fn event_version(&self) -> usize {
-        1
-    }
-
-    fn aggregate_version(&self) -> usize {
-        match self {
-            AccountEvent::Opened {
-                aggregate_version, ..
-            }
-            | AccountEvent::Deposited {
-                aggregate_version, ..
-            }
-            | AccountEvent::Withdrawn {
-                aggregate_version, ..
-            } => *aggregate_version,
-        }
-    }
 }
 
 impl Aggregate for Account {
