@@ -4,10 +4,6 @@ use std::sync::Arc;
 
 #[async_trait]
 pub trait SnapshotRepository: Send + Sync {
-    fn snapshot_policy(&self) -> SnapshotPolicy {
-        SnapshotPolicy::Every(10)
-    }
-
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -22,10 +18,6 @@ impl<T> SnapshotRepository for Arc<T>
 where
     T: SnapshotRepository + ?Sized,
 {
-    fn snapshot_policy(&self) -> SnapshotPolicy {
-        (**self).snapshot_policy()
-    }
-
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -35,10 +27,6 @@ where
     }
 
     async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
-        if !self.snapshot_policy().should_snapshot(aggregate.version()) {
-            return Ok(());
-        }
-
         (**self).save::<A>(aggregate).await
     }
 }
@@ -55,8 +43,42 @@ impl SnapshotPolicy {
             SnapshotPolicy::Never => false,
             SnapshotPolicy::Every(interval) => {
                 let interval = (*interval).max(1);
-                version > 0 && version % interval == 0
+                version > 0 && version.is_multiple_of(interval)
             }
         }
+    }
+}
+
+/// SnapshotRepository 的装饰器，根据策略决定是否落盘快照
+pub struct SnapshotRepositoryWithPolicy<R> {
+    inner: R,
+    policy: SnapshotPolicy,
+}
+
+impl<R> SnapshotRepositoryWithPolicy<R> {
+    pub fn new(inner: R, policy: SnapshotPolicy) -> Self {
+        Self { inner, policy }
+    }
+}
+
+#[async_trait]
+impl<R> SnapshotRepository for SnapshotRepositoryWithPolicy<R>
+where
+    R: SnapshotRepository + Send + Sync,
+{
+    async fn get_snapshot<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        version: Option<usize>,
+    ) -> Result<Option<SerializedSnapshot>> {
+        self.inner.get_snapshot::<A>(aggregate_id, version).await
+    }
+
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+        if !self.policy.should_snapshot(aggregate.version()) {
+            return Ok(());
+        }
+
+        self.inner.save::<A>(aggregate).await
     }
 }
