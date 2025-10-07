@@ -248,7 +248,7 @@ where
     fn new(event_repo: E) -> Self {
         Self {
             event_repo,
-            upcaster_chain: EventUpcasterChain::new(),
+            upcaster_chain: EventUpcasterChain::default(),
             _phantom: std::marker::PhantomData,
         }
     }

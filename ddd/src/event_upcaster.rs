@@ -36,24 +36,11 @@ pub struct EventUpcasterChain {
 
 impl Default for EventUpcasterChain {
     fn default() -> Self {
-        Self::new()
+        Self::from_iter(vec![])
     }
 }
 
 impl EventUpcasterChain {
-    pub fn new() -> Self {
-        Self { stages: vec![] }
-    }
-
-    /// 添加一个 Upcaster 升级器到链中
-    pub fn push<U>(mut self, u: U) -> Self
-    where
-        U: EventUpcaster + 'static,
-    {
-        self.stages.push(Arc::new(u));
-        self
-    }
-
     /// 对一批事件进行升级，直到不再有升级发生
     pub fn upcast_all(&self, mut events: Vec<SerializedEvent>) -> Result<Vec<SerializedEvent>> {
         loop {

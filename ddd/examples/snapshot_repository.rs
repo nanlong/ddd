@@ -430,7 +430,7 @@ where
         Self {
             event_repo,
             snapshot_repo,
-            upcaster_chain: EventUpcasterChain::new(),
+            upcaster_chain: EventUpcasterChain::default(),
             _phantom: std::marker::PhantomData,
         }
     }

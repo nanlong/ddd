@@ -22,6 +22,7 @@ use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult
 use ddd::persist::{SerializedEvent, deserialize_events, serialize_events};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use ulid::Ulid;
 
 // ============================================================================
@@ -621,14 +622,17 @@ fn main() -> AnyResult<()> {
 
     let account_id = "acc-001";
 
-    // 构建 Upcaster Chain
-    let chain = EventUpcasterChain::new()
-        .push(AccountCreditedV1ToV2)
-        .push(AccountCreditedV2ToV3)
-        .push(AccountCreditedV3ToV4)
-        .push(AccountDebitedV1ToV2)
-        .push(AccountDebitedV2ToV3)
-        .push(AccountDebitedV3ToV4);
+    // 构建 Upcaster Chain（收集 Arc<dyn EventUpcaster>，避免重复 Arc::new）
+    let chain: EventUpcasterChain = vec![
+        Arc::new(AccountCreditedV1ToV2) as Arc<dyn EventUpcaster>,
+        Arc::new(AccountCreditedV2ToV3) as Arc<dyn EventUpcaster>,
+        Arc::new(AccountCreditedV3ToV4) as Arc<dyn EventUpcaster>,
+        Arc::new(AccountDebitedV1ToV2) as Arc<dyn EventUpcaster>,
+        Arc::new(AccountDebitedV2ToV3) as Arc<dyn EventUpcaster>,
+        Arc::new(AccountDebitedV3ToV4) as Arc<dyn EventUpcaster>,
+    ]
+    .into_iter()
+    .collect();
 
     // 模拟从数据库读取历史事件（按时间顺序：v1 → v2 → v3 → v4）
     println!("原始事件（混合版本）:");
