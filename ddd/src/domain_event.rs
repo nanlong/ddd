@@ -2,7 +2,7 @@ use crate::aggregate::Aggregate;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{fmt, slice::Iter, vec::IntoIter};
+use std::{fmt, ops::Deref, slice::Iter, vec::IntoIter};
 
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
@@ -173,5 +173,16 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         self.events.iter()
+    }
+}
+
+impl<A> Deref for AggregateEvents<A>
+where
+    A: Aggregate,
+{
+    type Target = [EventEnvelope<A>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.events
     }
 }
