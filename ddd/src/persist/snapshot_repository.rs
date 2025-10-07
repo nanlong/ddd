@@ -35,6 +35,10 @@ where
     }
 
     async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
+        if !self.snapshot_policy().should_snapshot(aggregate.version()) {
+            return Ok(());
+        }
+
         (**self).save::<A>(aggregate).await
     }
 }
