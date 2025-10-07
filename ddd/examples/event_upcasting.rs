@@ -15,14 +15,19 @@
 /// - v3: account.debited { minor_units: i64, currency: String } - 金额改为最小单位（分）
 /// - v4: account.withdrew { minor_units: i64, currency: String } - 重命名为 withdrew
 use anyhow::Result as AnyResult;
+use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
-use ddd::persist::{SerializedEvent, deserialize_events, serialize_events};
+use ddd::persist::{
+    AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
+    SerializedSnapshot, SnapshotRepository, SnapshottingAggregateRepository, serialize_events,
+};
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
 // ============================================================================
@@ -283,9 +288,9 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
         );
 
         let deposited_payload = serde_json::json!({
-            "account.deposited": {
+            "Deposited": {
                 "id": event.event_id(),
-                "version": event.aggregate_version(),
+                "aggregate_version": event.aggregate_version(),
                 "minor_units": minor_units,
                 "currency": currency,
             }
@@ -455,9 +460,9 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
         );
 
         let withdrew_payload = serde_json::json!({
-            "account.withdrew": {
+            "Withdrew": {
                 "id": event.event_id(),
-                "version": event.aggregate_version(),
+                "aggregate_version": event.aggregate_version(),
                 "minor_units": minor_units,
                 "currency": currency,
             }
@@ -484,6 +489,98 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
 }
 
 // ============================================================================
+// 内存仓储实现（示例）
+// ============================================================================
+
+#[derive(Default, Clone)]
+struct InMemoryEventRepository {
+    events: Arc<Mutex<HashMap<String, Vec<SerializedEvent>>>>,
+}
+
+#[async_trait]
+impl EventRepository for InMemoryEventRepository {
+    async fn get_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+    ) -> DomainResult<Vec<SerializedEvent>> {
+        let store = self.events.lock().unwrap();
+        Ok(store.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
+    }
+
+    async fn get_last_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        last_version: usize,
+    ) -> DomainResult<Vec<SerializedEvent>> {
+        let store = self.events.lock().unwrap();
+        Ok(store
+            .get(aggregate_id)
+            .map(|events| {
+                events
+                    .iter()
+                    .filter(|e| e.aggregate_version() > last_version)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new))
+    }
+
+    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        let mut store = self.events.lock().unwrap();
+        let aggregate_id = events[0].aggregate_id().to_string();
+        let entry = store.entry(aggregate_id).or_default();
+        entry.extend_from_slice(events);
+
+        Ok(())
+    }
+}
+
+#[derive(Default, Clone)]
+struct InMemorySnapshotRepository {
+    snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+}
+
+#[async_trait]
+impl SnapshotRepository for InMemorySnapshotRepository {
+    async fn get_snapshot<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        version: Option<usize>,
+    ) -> DomainResult<Option<SerializedSnapshot>> {
+        let store = self.snapshots.lock().unwrap();
+        let key = (A::TYPE.to_string(), aggregate_id.to_string());
+
+        if let Some(snaps) = store.get(&key) {
+            match version {
+                Some(target) => Ok(snaps
+                    .iter()
+                    .filter(|s| s.aggregate_version() <= target)
+                    .max_by_key(|s| s.aggregate_version())
+                    .cloned()),
+                None => Ok(snaps.last().cloned()),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn save<A: Aggregate>(&self, aggregate: &A) -> DomainResult<()> {
+        let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
+        let mut store = self.snapshots.lock().unwrap();
+        let key = (A::TYPE.to_string(), aggregate.id().to_string());
+        let entry = store.entry(key).or_default();
+        entry.push(snapshot);
+        entry.sort_by_key(|s| s.aggregate_version());
+
+        Ok(())
+    }
+}
+
+// ============================================================================
 // 通用事件创建函数
 // ============================================================================
 
@@ -502,7 +599,7 @@ fn create_deposit(
             "account.credited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "amount": yuan.unwrap()
             }),
         ),
@@ -510,7 +607,7 @@ fn create_deposit(
             "account.credited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "amount": yuan.unwrap(),
                 "currency": currency.unwrap()
             }),
@@ -519,7 +616,7 @@ fn create_deposit(
             "account.credited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "minor_units": cents.unwrap(),
                 "currency": currency.unwrap()
             }),
@@ -527,9 +624,9 @@ fn create_deposit(
         4 => (
             "account.deposited",
             serde_json::json!({
-                "account.deposited": {
+                "Deposited": {
                     "id": eid,
-                    "version": aver,
+                    "aggregate_version": aver,
                     "minor_units": cents.unwrap(),
                     "currency": currency.unwrap()
                 }
@@ -565,7 +662,7 @@ fn create_withdraw(
             "account.debited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "amount": yuan.unwrap()
             }),
         ),
@@ -573,7 +670,7 @@ fn create_withdraw(
             "account.debited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "amount": yuan.unwrap(),
                 "currency": currency.unwrap()
             }),
@@ -582,7 +679,7 @@ fn create_withdraw(
             "account.debited",
             serde_json::json!({
                 "id": eid,
-                "version": aver,
+                "aggregate_version": aver,
                 "minor_units": cents.unwrap(),
                 "currency": currency.unwrap()
             }),
@@ -590,9 +687,9 @@ fn create_withdraw(
         4 => (
             "account.withdrew",
             serde_json::json!({
-                "account.withdrew": {
+                "Withdrew": {
                     "id": eid,
-                    "version": aver,
+                    "aggregate_version": aver,
                     "minor_units": cents.unwrap(),
                     "currency": currency.unwrap()
                 }
@@ -617,78 +714,116 @@ fn create_withdraw(
 // 主函数
 // ============================================================================
 
-fn main() -> AnyResult<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> AnyResult<()> {
     println!("=== Event Upcasting 示例 ===\n");
 
     let account_id = "acc-001";
 
-    // 构建 Upcaster Chain（收集 Arc<dyn EventUpcaster>，避免重复 Arc::new）
-    let chain: EventUpcasterChain = vec![
-        Arc::new(AccountCreditedV1ToV2) as Arc<dyn EventUpcaster>,
-        Arc::new(AccountCreditedV2ToV3) as Arc<dyn EventUpcaster>,
-        Arc::new(AccountCreditedV3ToV4) as Arc<dyn EventUpcaster>,
-        Arc::new(AccountDebitedV1ToV2) as Arc<dyn EventUpcaster>,
-        Arc::new(AccountDebitedV2ToV3) as Arc<dyn EventUpcaster>,
-        Arc::new(AccountDebitedV3ToV4) as Arc<dyn EventUpcaster>,
-    ]
-    .into_iter()
-    .collect();
+    // 构建 Upcaster Chain，并包裹在 Arc 中便于共享
+    let upcaster_chain: Arc<EventUpcasterChain> = Arc::new(
+        vec![
+            Arc::new(AccountCreditedV1ToV2) as Arc<dyn EventUpcaster>,
+            Arc::new(AccountCreditedV2ToV3) as Arc<dyn EventUpcaster>,
+            Arc::new(AccountCreditedV3ToV4) as Arc<dyn EventUpcaster>,
+            Arc::new(AccountDebitedV1ToV2) as Arc<dyn EventUpcaster>,
+            Arc::new(AccountDebitedV2ToV3) as Arc<dyn EventUpcaster>,
+            Arc::new(AccountDebitedV3ToV4) as Arc<dyn EventUpcaster>,
+        ]
+        .into_iter()
+        .collect(),
+    );
 
-    // 模拟从数据库读取历史事件（按时间顺序：v1 → v2 → v3 → v4）
+    let event_repo = Arc::new(InMemoryEventRepository::default());
+    let snapshot_repo = Arc::new(InMemorySnapshotRepository::default());
+
+    // 构造历史事件（混合多个版本）并写入事件仓储
     println!("原始事件（混合版本）:");
-    let serialized_events = vec![
-        // 早期事件 (v1)
+    let historical_events = vec![
         create_deposit(account_id, 1, Some(100), None, None), // v1: 存入 100 元
         create_withdraw(account_id, 1, Some(30), None, None), // v1: 取出 30 元
-        // 添加货币字段后 (v2)
         create_deposit(account_id, 2, Some(50), None, Some("CNY")), // v2: 存入 50 元
         create_withdraw(account_id, 2, Some(20), None, Some("CNY")), // v2: 取出 20 元
         create_withdraw(account_id, 2, Some(5), None, Some("CNY")), // v2: 取出 5 元
-        // 改用分作为单位后 (v3)
         create_deposit(account_id, 3, None, Some(8000), Some("CNY")), // v3: 存入 80 元 (8000分)
         create_withdraw(account_id, 3, None, Some(1000), Some("CNY")), // v3: 取出 10 元 (1000分)
         create_deposit(account_id, 3, None, Some(2000), Some("CNY")), // v3: 存入 20 元 (2000分)
-        // 最新版本 (v4 - 重命名事件)
         create_deposit(account_id, 4, None, Some(5000), Some("CNY")), // v4: 存入 50 元 (5000分)
         create_withdraw(account_id, 4, None, Some(3000), Some("CNY")), // v4: 取出 30 元 (3000分)
     ];
 
-    for (i, se) in serialized_events.iter().enumerate() {
+    for (i, se) in historical_events.iter().enumerate() {
         println!("  {}. {} v{}", i + 1, se.event_type(), se.event_version());
     }
     println!();
 
-    // 反序列化并自动升级
-    println!("升级过程:");
+    event_repo.save(&historical_events).await?;
 
-    let upcasted_events: Vec<EventEnvelope<BankAccount>> =
-        deserialize_events(&chain, serialized_events)?;
+    // 使用 EventStoreAggregateRepository 自动上抬并重建聚合
+    println!("使用 EventStoreAggregateRepository 重建聚合:");
+    let account = match EventStoreAggregateRepository::<BankAccount, _>::new(
+        event_repo.clone(),
+        upcaster_chain.clone(),
+    )
+    .load(account_id)
+    .await?
+    {
+        Some(aggregate) => aggregate,
+        None => {
+            println!("  ⚠️ 仓储中没有找到事件");
+            return Ok(());
+        }
+    };
 
     println!(
-        "✅ 升级完成: {} 个事件全部升级到 v4\n",
-        upcasted_events.len()
-    );
-
-    // 应用事件重建聚合状态
-    println!("应用事件重建状态:");
-    let mut account = BankAccount::new(account_id.to_string());
-
-    for envelope in &upcasted_events {
-        account.apply(&envelope.payload);
-    }
-
-    println!(
-        "  余额: {} 分 ({:.2} 元), 版本: {}\n",
+        "  ✅ 升级完成: 余额 {} 分 ({:.2} 元), 版本 {}",
         account.balance_minor_units,
         account.balance_minor_units as f64 / 100.0,
         account.version()
     );
 
-    // 演示新事件的序列化
+    // 保存快照，随后追加增量事件模拟快照之后的演进
+    snapshot_repo.save(&account).await?;
+    println!("  💾 已保存快照 (版本 {})", account.version());
+
+    let incremental_events = vec![
+        create_withdraw(account_id, 2, Some(10), None, Some("CNY")), // v2: 追加取款 10 元
+        create_deposit(account_id, 3, None, Some(1500), Some("CNY")), // v3: 追加存款 15 元 (1500分)
+    ];
+    event_repo.save(&incremental_events).await?;
+    println!(
+        "  ➕ 追加 {} 个增量事件（快照之后）",
+        incremental_events.len()
+    );
+
+    // 使用 SnapshottingAggregateRepository：先加载快照，再上抬快照后的增量事件
+    let account_after_snapshot = match SnapshottingAggregateRepository::<BankAccount, _, _>::new(
+        event_repo.clone(),
+        snapshot_repo.clone(),
+        upcaster_chain.clone(),
+    )
+    .load(account_id)
+    .await?
+    {
+        Some(aggregate) => aggregate,
+        None => {
+            println!("  ⚠️ 快照仓储中没有聚合");
+            return Ok(());
+        }
+    };
+
+    println!(
+        "  🔁 SnapshottingAggregateRepository 加载后: 余额 {} 分 ({:.2} 元), 版本 {}\n",
+        account_after_snapshot.balance_minor_units,
+        account_after_snapshot.balance_minor_units as f64 / 100.0,
+        account_after_snapshot.version()
+    );
+
+    // 演示新事件的序列化（始终使用最新版本的事件结构）
     println!("新事件序列化演示:");
     let new_event = BankAccountEvent::Deposited {
         id: Ulid::new().to_string(),
-        aggregate_version: account.version() + 1,
+        aggregate_version: account_after_snapshot.version() + 1,
         minor_units: 2000,
         currency: "CNY".to_string(),
     };
@@ -708,10 +843,9 @@ fn main() -> AnyResult<()> {
 
     // 总结
     println!("=== 应用场景总结 ===");
-    println!("• 加载: repository.get_events() → SerializedEvent[]");
-    println!("• 升级: deserialize_events(&chain, events) → 自动升级到 v4");
-    println!("• 重建: aggregate.apply() → 恢复聚合状态");
-    println!("• 存储: serialize_events() → 新事件持久化");
+    println!("• 仓储: EventStoreAggregateRepository::load() → 历史事件自动升级");
+    println!("• 快照: SnapshottingAggregateRepository::load() → 快照 + 增量事件一体化恢复");
+    println!("• 存储: EventRepository::save() / serialize_events() → 新事件持久化");
     println!("\n✨ 优势: 历史事件自动升级，业务代码仅处理最新版本");
 
     Ok(())
