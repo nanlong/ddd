@@ -121,3 +121,161 @@ impl Extend<Arc<dyn EventUpcaster>> for EventUpcasterChain {
         self.stages.extend(iter);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
+    use crate::error::{DomainError, DomainResult};
+    use crate::persist::SerializedEvent;
+    use chrono::Utc;
+    use std::sync::Arc;
+
+    fn mk_event(ty: &str, ver: usize, payload: serde_json::Value) -> SerializedEvent {
+        SerializedEvent::builder()
+            .event_id(ulid::Ulid::new().to_string())
+            .event_type(ty.to_string())
+            .event_version(ver)
+            .maybe_sequence_number(None)
+            .aggregate_id("a-1".to_string())
+            .aggregate_type("Order".to_string())
+            .aggregate_version(0)
+            .occurred_at(Utc::now())
+            .payload(payload)
+            .build()
+    }
+
+    struct SplitV1; // v1 -> two events
+    impl EventUpcaster for SplitV1 {
+        fn applies(&self, event_type: &str, event_version: usize) -> bool {
+            event_type == "legacy.order.created" && event_version == 1
+        }
+
+        fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
+            let base = event.payload();
+            let id = base.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let init = SerializedEvent::builder()
+                .event_id(event.event_id().to_string())
+                .event_type("order.init".to_string())
+                .event_version(2)
+                .maybe_sequence_number(None)
+                .aggregate_id(event.aggregate_id().to_string())
+                .aggregate_type(event.aggregate_type().to_string())
+                .aggregate_version(event.aggregate_version())
+                .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+                .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+                .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+                .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+                .occurred_at(event.occurred_at())
+                .payload(serde_json::json!({ "id": id, "stage": "init" }))
+                .build();
+
+            let meta = SerializedEvent::builder()
+                .event_id(event.event_id().to_string())
+                .event_type("order.meta".to_string())
+                .event_version(1)
+                .maybe_sequence_number(None)
+                .aggregate_id(event.aggregate_id().to_string())
+                .aggregate_type(event.aggregate_type().to_string())
+                .aggregate_version(event.aggregate_version())
+                .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+                .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+                .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+                .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+                .occurred_at(event.occurred_at())
+                .payload(serde_json::json!({ "id": id, "meta": {"source": "legacy"} }))
+                .build();
+
+            Ok(EventUpcasterResult::Many(vec![init, meta]))
+        }
+    }
+
+    struct DropMeta; // drop order.meta events
+    impl EventUpcaster for DropMeta {
+        fn applies(&self, event_type: &str, _event_version: usize) -> bool {
+            event_type == "order.meta"
+        }
+        fn upcast(&self, _event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
+            Ok(EventUpcasterResult::Drop)
+        }
+    }
+
+    struct RenameInitToCreated; // v2 init -> v3 created
+    impl EventUpcaster for RenameInitToCreated {
+        fn applies(&self, event_type: &str, event_version: usize) -> bool {
+            event_type == "order.init" && event_version == 2
+        }
+        fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
+            let next = SerializedEvent::builder()
+                .event_id(event.event_id().to_string())
+                .event_type("order.created".to_string())
+                .event_version(3)
+                .maybe_sequence_number(None)
+                .aggregate_id(event.aggregate_id().to_string())
+                .aggregate_type(event.aggregate_type().to_string())
+                .aggregate_version(event.aggregate_version())
+                .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+                .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+                .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+                .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+                .occurred_at(event.occurred_at())
+                .payload(event.payload().clone())
+                .build();
+            Ok(EventUpcasterResult::One(next))
+        }
+    }
+
+    #[test]
+    fn complex_chain_split_drop_until_stable() {
+        let chain: EventUpcasterChain = vec![
+            Arc::new(SplitV1) as Arc<dyn EventUpcaster>,
+            Arc::new(DropMeta) as Arc<dyn EventUpcaster>,
+            Arc::new(RenameInitToCreated) as Arc<dyn EventUpcaster>,
+        ]
+        .into_iter()
+        .collect();
+
+        let legacy = mk_event("legacy.order.created", 1, serde_json::json!({"id": "o-1"}));
+        let other = mk_event("noop", 1, serde_json::json!({"x": 1}));
+
+        let input = vec![legacy, other.clone()];
+        let out = chain.upcast_all(input).unwrap();
+
+        // 期望：legacy 生成 init(v2) + meta(v1)，随后 meta 被 Drop，init(v2) -> created(v3)
+        // 另一个事件保持不变
+        assert_eq!(out.len(), 2);
+        let types: Vec<(String, usize)> = out
+            .iter()
+            .map(|e| (e.event_type().to_string(), e.event_version()))
+            .collect();
+        assert!(types.contains(&("order.created".to_string(), 3)));
+        assert!(types.contains(&(other.event_type().to_string(), other.event_version())));
+    }
+
+    struct AlwaysFail;
+    impl EventUpcaster for AlwaysFail {
+        fn applies(&self, _event_type: &str, _event_version: usize) -> bool {
+            true
+        }
+        fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
+            Err(DomainError::UpcastFailed {
+                event_type: event.event_type().to_string(),
+                from_version: event.event_version(),
+                stage: Some("AlwaysFail"),
+                reason: "boom".into(),
+            })
+        }
+    }
+
+    #[test]
+    fn upcast_failure_returns_error() {
+        let chain: EventUpcasterChain = vec![Arc::new(AlwaysFail) as Arc<dyn EventUpcaster>]
+            .into_iter()
+            .collect();
+        let input = vec![mk_event("noop", 1, serde_json::json!({}))];
+        let err = chain.upcast_all(input).unwrap_err();
+        match err {
+            DomainError::UpcastFailed { .. } => {}
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+}

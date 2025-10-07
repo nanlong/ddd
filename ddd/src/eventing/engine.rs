@@ -326,3 +326,225 @@ impl Drop for EngineHandle {
         self.shutdown();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{DomainError, DomainResult};
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use futures_core::stream::BoxStream;
+    use futures_util::StreamExt;
+    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::broadcast;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    #[derive(Clone)]
+    struct InMemoryBus {
+        tx: broadcast::Sender<SerializedEvent>,
+    }
+    impl InMemoryBus {
+        fn new(cap: usize) -> Self {
+            let (tx, _rx) = broadcast::channel(cap);
+            Self { tx }
+        }
+    }
+    #[async_trait]
+    impl EventBus for InMemoryBus {
+        async fn publish(&self, event: &SerializedEvent) -> DomainResult<()> {
+            let _ = self.tx.send(event.clone());
+            Ok(())
+        }
+        async fn subscribe(&self) -> BoxStream<'static, DomainResult<SerializedEvent>> {
+            let rx = self.tx.subscribe();
+            Box::pin(BroadcastStream::new(rx).map(|r| {
+                r.map_err(|e| DomainError::EventBus {
+                    reason: e.to_string(),
+                })
+            }))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Outbox {
+        inner: Arc<Mutex<Vec<SerializedEvent>>>,
+    }
+    impl Outbox {
+        fn push(&self, ev: SerializedEvent) {
+            self.inner.lock().unwrap().push(ev);
+        }
+        fn drain(&self) -> Vec<SerializedEvent> {
+            std::mem::take(&mut *self.inner.lock().unwrap())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SpyDeliverer {
+        outbox: Outbox,
+        delivered: Arc<AtomicUsize>,
+        failed: Arc<AtomicUsize>,
+    }
+    #[async_trait]
+    impl EventDeliverer for SpyDeliverer {
+        async fn fetch_events(&self) -> DomainResult<Vec<SerializedEvent>> {
+            Ok(self.outbox.drain())
+        }
+        async fn mark_delivered(&self, events: &[&SerializedEvent]) -> DomainResult<()> {
+            self.delivered.fetch_add(events.len(), Ordering::Relaxed);
+            Ok(())
+        }
+        async fn mark_failed(
+            &self,
+            events: &[&SerializedEvent],
+            _reason: &str,
+        ) -> DomainResult<()> {
+            self.failed.fetch_add(events.len(), Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SpyReclaimer {
+        handler_failed: Arc<AtomicUsize>,
+        reclaimed: Arc<AtomicUsize>,
+        stored: Arc<Mutex<Vec<SerializedEvent>>>,
+    }
+    #[async_trait]
+    impl EventReclaimer for SpyReclaimer {
+        async fn fetch_events(&self) -> DomainResult<Vec<SerializedEvent>> {
+            Ok(std::mem::take(&mut *self.stored.lock().unwrap()))
+        }
+        async fn mark_reclaimed(&self, events: &[&SerializedEvent]) -> DomainResult<()> {
+            self.reclaimed.fetch_add(events.len(), Ordering::Relaxed);
+            Ok(())
+        }
+        async fn mark_failed(
+            &self,
+            _events: &[&SerializedEvent],
+            _reason: &str,
+        ) -> DomainResult<()> {
+            Ok(())
+        }
+        async fn mark_handler_failed(
+            &self,
+            _handler_name: &str,
+            events: &[&SerializedEvent],
+            _reason: &str,
+        ) -> DomainResult<()> {
+            self.handler_failed.fetch_add(events.len(), Ordering::Relaxed);
+            for e in events {
+                self.stored.lock().unwrap().push((*e).clone());
+            }
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct SpyHandler {
+        name: &'static str,
+        types: HandledEventType,
+        fail_on: Option<&'static str>,
+        handled: Arc<Mutex<usize>>,
+    }
+    #[async_trait]
+    impl EventHandler for SpyHandler {
+        async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
+            if let Some(bad) = self.fail_on {
+                if event.event_type() == bad {
+                    return Err(DomainError::EventHandler {
+                        handler: self.name.into(),
+                        reason: "fail requested".into(),
+                    });
+                }
+            }
+            *self.handled.lock().unwrap() += 1;
+            Ok(())
+        }
+        fn handled_event_type(&self) -> HandledEventType {
+            self.types.clone()
+        }
+        fn handler_name(&self) -> &str {
+            self.name
+        }
+    }
+
+    fn mk_event(id: &str, ty: &str) -> SerializedEvent {
+        SerializedEvent::builder()
+            .event_id(id.to_string())
+            .event_type(ty.to_string())
+            .event_version(1)
+            .aggregate_id("agg-1".to_string())
+            .aggregate_type("Demo".to_string())
+            .aggregate_version(1)
+            .occurred_at(Utc::now())
+            .payload(serde_json::json!({"id": id}))
+            .build()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn engine_end_to_end_delivery_subscribe_handle_failure() {
+        // 组件
+        let bus = Arc::new(InMemoryBus::new(256));
+        let outbox = Outbox::default();
+        let deliverer = Arc::new(SpyDeliverer {
+            outbox: outbox.clone(),
+            ..Default::default()
+        });
+        let reclaimer = Arc::new(SpyReclaimer::default());
+        let ok = Arc::new(SpyHandler {
+            name: "ok",
+            types: HandledEventType::All,
+            fail_on: None,
+            handled: Arc::new(Mutex::new(0)),
+        });
+        let fail = Arc::new(SpyHandler {
+            name: "fail",
+            types: HandledEventType::One("FailMe".into()),
+            fail_on: Some("FailMe"),
+            handled: Arc::new(Mutex::new(0)),
+        });
+
+        let engine = Arc::new(
+            EventEngine::builder()
+                .event_bus(bus.clone())
+                .event_deliverer(deliverer.clone())
+                .event_reclaimer(reclaimer.clone())
+                .event_handlers(vec![ok.clone(), fail.clone()])
+                .config(EventEngineConfig {
+                    deliver_interval: Duration::from_millis(100),
+                    reclaim_interval: Duration::from_millis(200),
+                    handler_concurrency: 8,
+                })
+                .build(),
+        );
+
+        // 投入待投递事件
+        outbox.push(mk_event("e1", "Ok"));
+        outbox.push(mk_event("e2", "FailMe"));
+        outbox.push(mk_event("e3", "Ok"));
+
+        let handle = engine.start();
+        // 使用 timeout + 条件轮询，减少固定 sleep 的脆弱性
+        let _ = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if deliverer.delivered.load(Ordering::Relaxed) == 3
+                    && reclaimer.handler_failed.load(Ordering::Relaxed) >= 1
+                    && *ok.handled.lock().unwrap() >= 2
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        handle.shutdown();
+        handle.join().await;
+
+        // 断言：全部 3 条已标记 delivered；失败处理器至少记录 1 次失败（可能被补偿多次重投导致>1）
+        assert_eq!(deliverer.delivered.load(Ordering::Relaxed), 3);
+        assert!(reclaimer.handler_failed.load(Ordering::Relaxed) >= 1);
+        // 至少一个处理器成功消费
+        assert!(*ok.handled.lock().unwrap() >= 2);
+    }
+}
