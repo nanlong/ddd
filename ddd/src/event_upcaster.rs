@@ -21,19 +21,6 @@ where
     }
 }
 
-impl<T> EventUpcaster for Box<T>
-where
-    T: EventUpcaster + ?Sized,
-{
-    fn applies(&self, event_type: &str, event_version: usize) -> bool {
-        (**self).applies(event_type, event_version)
-    }
-
-    fn upcast(&self, event: SerializedEvent) -> Result<EventUpcasterResult> {
-        (**self).upcast(event)
-    }
-}
-
 /// 升级结果：单个、新的多个、或丢弃
 #[allow(clippy::large_enum_variant)]
 pub enum EventUpcasterResult {
@@ -134,29 +121,16 @@ impl EventUpcasterChain {
     }
 }
 
-// 支持从具体类型 U（实现 EventUpcaster）迭代器收集
-impl<U> FromIterator<U> for EventUpcasterChain
-where
-    U: EventUpcaster + 'static,
-{
-    fn from_iter<T: IntoIterator<Item = U>>(iter: T) -> Self {
+impl FromIterator<Arc<dyn EventUpcaster>> for EventUpcasterChain {
+    fn from_iter<I: IntoIterator<Item = Arc<dyn EventUpcaster>>>(iter: I) -> Self {
         Self {
-            stages: iter
-                .into_iter()
-                .map(|u| -> Arc<dyn EventUpcaster> { Arc::new(u) })
-                .collect(),
+            stages: iter.into_iter().collect(),
         }
     }
 }
 
-impl<U> Extend<U> for EventUpcasterChain
-where
-    U: EventUpcaster + 'static,
-{
-    fn extend<T: IntoIterator<Item = U>>(&mut self, iter: T) {
-        self.stages.extend(
-            iter.into_iter()
-                .map(|u| -> Arc<dyn EventUpcaster> { Arc::new(u) }),
-        );
+impl Extend<Arc<dyn EventUpcaster>> for EventUpcasterChain {
+    fn extend<I: IntoIterator<Item = Arc<dyn EventUpcaster>>>(&mut self, iter: I) {
+        self.stages.extend(iter);
     }
 }
