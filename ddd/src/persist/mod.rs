@@ -10,4 +10,4 @@ pub use aggregate_repository::{
 pub use event_repository::{EventRepository, EventRepositoryExt};
 pub use serialized_event::{SerializedEvent, deserialize_events, serialize_events};
 pub use serialized_snapshot::SerializedSnapshot;
-pub use snapshot_repository::SnapshotRepository;
+pub use snapshot_repository::{SnapshotPolicy, SnapshotRepository};

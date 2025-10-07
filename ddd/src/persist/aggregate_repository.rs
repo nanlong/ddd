@@ -120,6 +120,10 @@ where
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
 
+        if envelopes.is_empty() {
+            return Ok(envelopes);
+        }
+
         let serialized = serialize_events(&envelopes).map_err(A::Error::from)?;
 
         self.event_repo
@@ -244,6 +248,10 @@ where
             .into_iter()
             .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
             .collect();
+
+        if envelopes.is_empty() {
+            return Ok(envelopes);
+        }
 
         let serialized = serialize_events(&envelopes).map_err(A::Error::from)?;
 

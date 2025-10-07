@@ -22,7 +22,8 @@ use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd::persist::{
     AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
-    SerializedSnapshot, SnapshotRepository, SnapshottingAggregateRepository, serialize_events,
+    SerializedSnapshot, SnapshotPolicy, SnapshotRepository, SnapshottingAggregateRepository,
+    serialize_events,
 };
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
@@ -539,13 +540,37 @@ impl EventRepository for InMemoryEventRepository {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct InMemorySnapshotRepository {
     snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+    policy: SnapshotPolicy,
+}
+
+impl Default for InMemorySnapshotRepository {
+    fn default() -> Self {
+        Self {
+            snapshots: Arc::new(Mutex::new(HashMap::new())),
+            policy: SnapshotPolicy::Every(1),
+        }
+    }
+}
+
+impl InMemorySnapshotRepository {
+    #[allow(dead_code)]
+    fn with_policy(policy: SnapshotPolicy) -> Self {
+        Self {
+            snapshots: Arc::new(Mutex::new(HashMap::new())),
+            policy,
+        }
+    }
 }
 
 #[async_trait]
 impl SnapshotRepository for InMemorySnapshotRepository {
+    fn snapshot_policy(&self) -> SnapshotPolicy {
+        self.policy
+    }
+
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -569,6 +594,9 @@ impl SnapshotRepository for InMemorySnapshotRepository {
     }
 
     async fn save<A: Aggregate>(&self, aggregate: &A) -> DomainResult<()> {
+        if !self.policy.should_snapshot(aggregate.version()) {
+            return Ok(());
+        }
         let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
         let mut store = self.snapshots.lock().unwrap();
         let key = (A::TYPE.to_string(), aggregate.id().to_string());

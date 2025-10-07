@@ -10,8 +10,8 @@ use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
-    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
-    deserialize_events, serialize_events,
+    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
+    SnapshotRepository, deserialize_events, serialize_events,
 };
 use ddd_macros::{aggregate, event};
 use serde::{Deserialize, Serialize};
@@ -351,14 +351,38 @@ impl EventRepository for InMemoryEventRepository {
 // 内存快照仓储实现
 // ============================================================================
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct InMemorySnapshotRepository {
     // (aggregate_type, aggregate_id) -> 快照列表（按版本排序）
     snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+    policy: SnapshotPolicy,
+}
+
+impl Default for InMemorySnapshotRepository {
+    fn default() -> Self {
+        Self {
+            snapshots: Arc::new(Mutex::new(HashMap::new())),
+            policy: SnapshotPolicy::Every(1),
+        }
+    }
+}
+
+impl InMemorySnapshotRepository {
+    #[allow(dead_code)]
+    fn with_policy(policy: SnapshotPolicy) -> Self {
+        Self {
+            snapshots: Arc::new(Mutex::new(HashMap::new())),
+            policy,
+        }
+    }
 }
 
 #[async_trait]
 impl SnapshotRepository for InMemorySnapshotRepository {
+    fn snapshot_policy(&self) -> SnapshotPolicy {
+        self.policy
+    }
+
     /// 获取快照，如果指定版本则获取该版本或之前的最新快照
     async fn get_snapshot<A: Aggregate>(
         &self,
@@ -390,6 +414,9 @@ impl SnapshotRepository for InMemorySnapshotRepository {
 
     /// 保存快照
     async fn save<A: Aggregate>(&self, aggregate: &A) -> DomainResult<()> {
+        if !self.policy.should_snapshot(aggregate.version()) {
+            return Ok(());
+        }
         let snapshot = SerializedSnapshot::from_aggregate(aggregate)?;
         let mut snapshots = self.snapshots.lock().unwrap();
 
