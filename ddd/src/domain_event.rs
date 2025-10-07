@@ -7,9 +7,9 @@ use std::{fmt, ops::Deref, slice::Iter, vec::IntoIter};
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
 {
-    fn event_id(&self) -> String;
+    fn event_id(&self) -> &str;
 
-    fn event_type(&self) -> String;
+    fn event_type(&self) -> &str;
 
     fn event_version(&self) -> usize;
 

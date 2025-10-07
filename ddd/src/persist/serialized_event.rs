@@ -101,8 +101,8 @@ where
 
     fn try_from(envelope: &EventEnvelope<A>) -> Result<Self, Self::Error> {
         Ok(SerializedEvent {
-            event_id: envelope.payload.event_id(),
-            event_type: envelope.payload.event_type(),
+            event_id: envelope.payload.event_id().to_string(),
+            event_type: envelope.payload.event_type().to_string(),
             event_version: envelope.payload.event_version(),
             sequence_number: None,
             aggregate_id: envelope.metadata.aggregate_id().to_string(),

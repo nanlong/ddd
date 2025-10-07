@@ -216,17 +216,17 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         let key = v_ident.to_string();
         // 变体级覆盖或默认：EnumName.Variant
         if let Some(lit) = variant_types.get(&key) {
-            quote! { Self::#v_ident { .. } => #lit.to_string() }
+            quote! { Self::#v_ident { .. } => #lit }
         } else {
             let combined = format!("{}.{}", enum_name_string, key);
             let lit = syn::LitStr::new(&combined, v_ident.span());
-            quote! { Self::#v_ident { .. } => #lit.to_string() }
+            quote! { Self::#v_ident { .. } => #lit }
         }
     });
 
     let id_match_arms = enum_item.variants.iter().map(|v| {
         let v_ident = &v.ident;
-        quote! { Self::#v_ident { id, .. } => id.clone() }
+        quote! { Self::#v_ident { id, .. } => id.as_str() }
     });
 
     let ver_match_arms = enum_item.variants.iter().map(|v| {
@@ -248,10 +248,10 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         #enum_item
 
         impl ::ddd::domain_event::DomainEvent for #enum_ident {
-            fn event_id(&self) -> String {
+            fn event_id(&self) -> &str {
                 match self { #( #id_match_arms, )* }
             }
-            fn event_type(&self) -> String {
+            fn event_type(&self) -> &str {
                 match self { #( #type_match_arms, )* }
             }
             fn event_version(&self) -> usize {
