@@ -32,11 +32,11 @@ enum AccountCommand {
 #[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum AccountEvent {
-    #[event_type = "account.opened"]
+    #[event(event_type = "account.opened")]
     Opened { initial_balance: usize },
-    #[event_type = "account.deposited"]
+    #[event(event_type = "account.deposited")]
     Deposited { amount: usize },
-    #[event_type = "account.withdrawn"]
+    #[event(event_type = "account.withdrawn")]
     Withdrawn { amount: usize },
 }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use syn::Token;
 use syn::punctuated::Punctuated;
 use syn::{
-    Ident, Item, ItemStruct, Result as SynResult, Type, parse::Parse, parse::ParseStream,
+    Expr, Ident, Item, ItemStruct, Result as SynResult, Type, parse::Parse, parse::ParseStream,
     parse_macro_input, spanned::Spanned,
 };
 
@@ -93,9 +93,8 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 的具名字段变体，并为每个变体追加 id: IdType, version: usize 两个字段（若缺失）。
 /// 支持键值形式：
 /// - #[event(id = IdType)] 指定 id 字段类型（默认 String）
-/// - #[event(version = N)] 指定 DomainEvent::event_version 返回的常量版本（默认 1）
-/// - 事件类型应在“变体”上通过 #[event_type = "..."] 指定；若缺省，则默认使用 "枚举名.变体名"
-/// - 不再兼容变体级 #[event(type = "...")] 写法，发现则直接报错提示改用 #[event_type]
+/// - #[event(version = N)] 指定 DomainEvent::event_version 返回的默认版本号（默认 1）
+/// - 变体可通过 #[event(type = "...", version = N)] 覆写事件类型与版本号
 #[proc_macro_attribute]
 pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cfg = parse_macro_input!(attr as EventAttrConfig);
@@ -114,8 +113,9 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let id_type = cfg.id_ty.unwrap_or_else(|| syn::parse_quote! { String });
     let version_lit = cfg.version.unwrap_or_else(|| syn::parse_quote! { 1 });
 
-    // 变体 -> 自定义事件类型名
+    // 变体 -> 自定义事件类型名 / 版本
     let mut variant_types: HashMap<String, syn::LitStr> = HashMap::new();
+    let mut variant_versions: HashMap<String, syn::LitInt> = HashMap::new();
 
     for v in &mut enum_item.variants {
         match &mut v.fields {
@@ -138,13 +138,64 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 fields_named.named = new_named;
 
-                if let Some(lit) = read_variant_type_attr(&v.attrs) {
+                let mut retained_attrs = Vec::new();
+                let mut type_lit: Option<syn::LitStr> = None;
+                let mut version_lit: Option<syn::LitInt> = None;
+
+                for attr in v.attrs.iter() {
+                    if attr.path().is_ident("event") {
+                        match parse_variant_event_attr(attr) {
+                            Ok(cfg) => {
+                                if let Some(lit) = cfg.ty {
+                                    if type_lit.is_some() {
+                                        return syn::Error::new(
+                                            attr.span(),
+                                            "duplicate 'event_type' specified for this variant",
+                                        )
+                                        .to_compile_error()
+                                        .into();
+                                    }
+                                    type_lit = Some(lit);
+                                }
+                                if let Some(lit) = cfg.version {
+                                    if version_lit.is_some() {
+                                        return syn::Error::new(
+                                            attr.span(),
+                                            "duplicate 'event_version' specified for this variant",
+                                        )
+                                        .to_compile_error()
+                                        .into();
+                                    }
+                                    version_lit = Some(lit);
+                                }
+                            }
+                            Err(err) => {
+                                return err.to_compile_error().into();
+                            }
+                        }
+                    } else if attr.path().is_ident("event_type")
+                        || attr.path().is_ident("event_version")
+                    {
+                        return syn::Error::new(
+                            attr.span(),
+                            "legacy #[event_type]/#[event_version] syntax is no longer supported; use #[event(event_type = ..., event_version = ...)]",
+                        )
+                        .to_compile_error()
+                        .into();
+                    } else {
+                        retained_attrs.push(attr.clone());
+                    }
+                }
+
+                v.attrs = retained_attrs;
+
+                if let Some(lit) = type_lit {
                     variant_types.insert(v.ident.to_string(), lit);
                 }
 
-                // 清理变体上的辅助属性（仅移除本宏识别的 event_type / 旧 event）
-                v.attrs
-                    .retain(|a| !(a.path().is_ident("event_type") || a.path().is_ident("event")));
+                if let Some(lit) = version_lit {
+                    variant_versions.insert(v.ident.to_string(), lit);
+                }
             }
             _ => {
                 return syn::Error::new(
@@ -178,7 +229,15 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { Self::#v_ident { id, .. } => id.clone() }
     });
 
-    let ver_match_arm = quote! { _ => #version_lit };
+    let ver_match_arms = enum_item.variants.iter().map(|v| {
+        let v_ident = &v.ident;
+        let key = v_ident.to_string();
+        if let Some(lit) = variant_versions.get(&key) {
+            quote! { Self::#v_ident { .. } => #lit }
+        } else {
+            quote! { Self::#v_ident { .. } => #version_lit }
+        }
+    });
 
     let agg_ver_match_arms = enum_item.variants.iter().map(|v| {
         let v_ident = &v.ident;
@@ -196,7 +255,7 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                 match self { #( #type_match_arms, )* }
             }
             fn event_version(&self) -> usize {
-                match self { #ver_match_arm }
+                match self { #( #ver_match_arms, )* }
             }
             fn aggregate_version(&self) -> usize {
                 match self { #( #agg_ver_match_arms, )* }
@@ -215,20 +274,94 @@ fn has_field_named(fields: &syn::FieldsNamed, name: &str) -> bool {
         .any(|f| f.ident.as_ref().map(|i| i == name).unwrap_or(false))
 }
 
-// 提取变体级事件类型：仅支持 #[event_type = "..."]
-fn read_variant_type_attr(attrs: &[syn::Attribute]) -> Option<syn::LitStr> {
-    for attr in attrs {
-        if attr.path().is_ident("event_type")
-            && let syn::Meta::NameValue(nv) = &attr.meta
-                && let syn::Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(lit),
-                    ..
-                }) = &nv.value
-                {
-                    return Some(lit.clone());
+struct VariantEventAttrConfig {
+    ty: Option<syn::LitStr>,
+    version: Option<syn::LitInt>,
+}
+
+fn parse_variant_event_attr(attr: &syn::Attribute) -> SynResult<VariantEventAttrConfig> {
+    match &attr.meta {
+        syn::Meta::List(_) => {
+            let mut ty: Option<syn::LitStr> = None;
+            let mut version: Option<syn::LitInt> = None;
+            let pairs: Punctuated<VariantEventAttrKv, Token![,]> = attr
+                .parse_args_with(Punctuated::<VariantEventAttrKv, Token![,]>::parse_terminated)?;
+
+            for kv in pairs {
+                let key = kv.key.to_string();
+                match key.as_str() {
+                    "event_type" => {
+                        if ty.is_some() {
+                            return Err(syn::Error::new(
+                                kv.key.span(),
+                                "duplicate key 'event_type' in attribute",
+                            ));
+                        }
+                        let lit = match kv.value {
+                            Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(lit),
+                                ..
+                            }) => lit,
+                            other => {
+                                return Err(syn::Error::new(
+                                    other.span(),
+                                    "expected string literal for 'event_type'",
+                                ));
+                            }
+                        };
+                        ty = Some(lit);
+                    }
+                    "event_version" => {
+                        if version.is_some() {
+                            return Err(syn::Error::new(
+                                kv.key.span(),
+                                "duplicate key 'event_version' in attribute",
+                            ));
+                        }
+                        let lit = match kv.value {
+                            Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Int(lit),
+                                ..
+                            }) => lit,
+                            other => {
+                                return Err(syn::Error::new(
+                                    other.span(),
+                                    "expected integer literal for 'event_version'",
+                                ));
+                            }
+                        };
+                        version = Some(lit);
+                    }
+                    _ => {
+                        return Err(syn::Error::new(
+                            kv.key.span(),
+                            "unknown key; expected 'event_type' | 'event_version'",
+                        ));
+                    }
                 }
+            }
+
+            Ok(VariantEventAttrConfig { ty, version })
+        }
+        other => Err(syn::Error::new(other.span(), "expected #[event(...)]")),
     }
-    None
+}
+
+struct VariantEventAttrKv {
+    key: Ident,
+    #[allow(dead_code)]
+    eq: Token![=],
+    value: Expr,
+}
+
+impl Parse for VariantEventAttrKv {
+    fn parse(input: ParseStream) -> SynResult<Self> {
+        Ok(Self {
+            key: input.parse()?,
+            eq: input.parse()?,
+            value: input.parse()?,
+        })
+    }
 }
 
 // 解析 aggregate 宏键值参数：id = <Type>

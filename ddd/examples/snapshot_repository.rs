@@ -74,23 +74,23 @@ enum OrderCommand {
 #[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum OrderEvent {
-    #[event_type = "order.item_added"]
+    #[event(event_type = "order.item_added")]
     ItemAdded {
         product_id: String,
         quantity: u32,
         price: i64,
     },
-    #[event_type = "order.item_removed"]
+    #[event(event_type = "order.item_removed")]
     ItemRemoved { product_id: String },
-    #[event_type = "order.confirmed"]
+    #[event(event_type = "order.confirmed")]
     Confirmed { confirmed_at: i64 },
-    #[event_type = "order.paid"]
+    #[event(event_type = "order.paid")]
     Paid { paid_at: i64 },
-    #[event_type = "order.shipped"]
+    #[event(event_type = "order.shipped")]
     Shipped { shipped_at: i64 },
-    #[event_type = "order.delivered"]
+    #[event(event_type = "order.delivered")]
     Delivered { delivered_at: i64 },
-    #[event_type = "order.cancelled"]
+    #[event(event_type = "order.cancelled")]
     Cancelled { cancelled_at: i64 },
 }
 

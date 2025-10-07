@@ -38,13 +38,13 @@ enum BankAccountCommand {
 #[event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
-    #[event_type = "bank_account.deposited"]
+    #[event(event_type = "bank_account.deposited")]
     Deposited { amount: i64 },
-    #[event_type = "bank_account.withdrawn"]
+    #[event(event_type = "bank_account.withdrawn")]
     Withdrawn { amount: i64 },
-    #[event_type = "bank_account.locked"]
+    #[event(event_type = "bank_account.locked")]
     Locked { reason: String },
-    #[event_type = "bank_account.unlocked"]
+    #[event(event_type = "bank_account.unlocked")]
     Unlocked { reason: String },
 }
 

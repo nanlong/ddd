@@ -48,13 +48,13 @@ enum BankAccountCommand {
 }
 
 // 当前版本的事件（v4）
-#[event(version = 4)]
+#[event]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
-    #[event_type = "account.deposited"]
+    #[event(event_type = "account.deposited", event_version = 4)]
     Deposited { minor_units: i64, currency: String },
 
-    #[event_type = "account.withdrew"]
+    #[event(event_type = "account.withdrew", event_version = 4)]
     Withdrew { minor_units: i64, currency: String },
 }
 
