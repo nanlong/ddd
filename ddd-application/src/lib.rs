@@ -4,8 +4,11 @@ pub mod command_handler;
 pub mod context;
 pub mod dto;
 pub mod error;
-pub mod in_process_command_bus;
-pub mod in_process_query_bus;
+pub mod inmemory_command_bus;
+pub mod inmemory_query_bus;
 pub mod query;
 pub mod query_bus;
 pub mod query_handler;
+
+pub use inmemory_command_bus::InMemoryCommandBus;
+pub use inmemory_query_bus::InMemoryQueryBus;

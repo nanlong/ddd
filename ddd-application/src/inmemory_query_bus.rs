@@ -17,14 +17,14 @@ type QueryHandlerFuture<'a> =
 type QueryHandlerFn =
     Arc<dyn for<'a> Fn(BoxAnySend, &'a AppContext) -> QueryHandlerFuture<'a> + Send + Sync>;
 
-/// 进程内（非分布式）的 QueryBus 实现
+/// 基于内存的 QueryBus 实现
 /// - 通过 TypeId 注册不同 Query 对应的 Handler
 /// - 以类型擦除方式调度，并在调用端进行结果还原
-pub struct InProcessQueryBus {
+pub struct InMemoryQueryBus {
     handlers: DashMap<TypeId, QueryHandlerFn>,
 }
 
-impl Default for InProcessQueryBus {
+impl Default for InMemoryQueryBus {
     fn default() -> Self {
         Self {
             handlers: DashMap::new(),
@@ -32,7 +32,7 @@ impl Default for InProcessQueryBus {
     }
 }
 
-impl InProcessQueryBus {
+impl InMemoryQueryBus {
     pub fn new() -> Self {
         Self::default()
     }
@@ -57,10 +57,7 @@ impl InProcessQueryBus {
                             let dto = handler.handle(ctx, *q).await?;
                             Ok(Box::new(dto) as BoxAnySend)
                         }
-                        Err(_) => Err(AppError::TypeMismatch {
-                            expected: type_name::<Q>(),
-                            found: "unknown",
-                        }),
+                        Err(_) => Err(AppError::TypeMismatch { expected: Q::NAME, found: "unknown" }),
                     }
                 })
             })
@@ -71,10 +68,10 @@ impl InProcessQueryBus {
 }
 
 #[async_trait]
-impl QueryBus for InProcessQueryBus {
+impl QueryBus for InMemoryQueryBus {
     async fn dispatch<Q: Query>(&self, ctx: &AppContext, q: Q) -> Result<Q::Dto, AppError> {
         let Some(f) = self.handlers.get(&TypeId::of::<Q>()).map(|h| h.clone()) else {
-            return Err(AppError::NotFound(type_name::<Q>()));
+            return Err(AppError::NotFound(Q::NAME));
         };
 
         let out = (f)(Box::new(q), ctx).await?;

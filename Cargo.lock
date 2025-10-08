@@ -207,6 +207,7 @@ dependencies = [
  "ddd-domain",
  "serde",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::any::{Any, TypeId, type_name};
+use std::any::{Any, TypeId};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,11 +17,11 @@ type CmdHandlerFn =
 /// 基于内存的 CommandBus 实现
 /// - 通过 TypeId 注册不同 Command 对应的 Handler
 /// - 运行时以类型擦除（Any）方式进行调度
-pub struct InProcessCommandBus {
+pub struct InMemoryCommandBus {
     handlers: DashMap<TypeId, CmdHandlerFn>,
 }
 
-impl Default for InProcessCommandBus {
+impl Default for InMemoryCommandBus {
     fn default() -> Self {
         Self {
             handlers: DashMap::new(),
@@ -29,7 +29,7 @@ impl Default for InProcessCommandBus {
     }
 }
 
-impl InProcessCommandBus {
+impl InMemoryCommandBus {
     pub fn new() -> Self {
         Self::default()
     }
@@ -52,10 +52,7 @@ impl InProcessCommandBus {
                     // 正常情况下这里的 downcast 永远不会失败（键与闭包同一泛型 C）
                     match boxed_cmd.downcast::<C>() {
                         Ok(cmd) => handler.handle(ctx, *cmd).await,
-                        Err(_) => Err(AppError::TypeMismatch {
-                            expected: type_name::<C>(),
-                            found: "unknown",
-                        }),
+                        Err(_) => Err(AppError::TypeMismatch { expected: C::NAME, found: "unknown" }),
                     }
                 })
             })
@@ -66,10 +63,10 @@ impl InProcessCommandBus {
 }
 
 #[async_trait]
-impl CommandBus for InProcessCommandBus {
+impl CommandBus for InMemoryCommandBus {
     async fn dispatch<C: Command>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError> {
         let Some(f) = self.handlers.get(&TypeId::of::<C>()).map(|h| h.clone()) else {
-            return Err(AppError::NotFound(type_name::<C>()));
+            return Err(AppError::NotFound(C::NAME));
         };
 
         (f)(Box::new(cmd), ctx).await
