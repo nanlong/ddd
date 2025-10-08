@@ -2,12 +2,12 @@
 /// 展示 Outbox -> Bus -> Handlers -> Reclaimer 的闭环，以及 handler 失败后的补偿重投
 use anyhow::Result as AnyResult;
 use chrono::Utc;
-use ddd::error::{DomainError, DomainResult};
-use ddd::eventing::{
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
     HandledEventType,
 };
-use ddd::persist::SerializedEvent;
+use ddd_domain::persist::SerializedEvent;
 use futures_core::stream::BoxStream;
 use futures_util::StreamExt;
 use std::{

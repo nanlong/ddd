@@ -1,12 +1,12 @@
 /// Account 聚合示例
 /// 演示基于命令驱动的事件溯源：打开账户、存取款等
 use async_trait::async_trait;
-use ddd::aggregate::Aggregate;
-use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, EventEnvelope};
-use ddd::entiry::Entity;
-use ddd::error::DomainError;
-use ddd::persist::AggregateRepository;
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::aggregate_root::AggregateRoot;
+use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::DomainError;
+use ddd_domain::persist::AggregateRepository;
 use ddd_macros::{entity, entity_id, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

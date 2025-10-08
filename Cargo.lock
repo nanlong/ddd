@@ -179,7 +179,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ddd"
+name = "ddd-domain"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -202,7 +202,7 @@ dependencies = [
 name = "ddd-macros"
 version = "0.1.0"
 dependencies = [
- "ddd",
+ "ddd-domain",
  "proc-macro2",
  "quote",
  "serde",

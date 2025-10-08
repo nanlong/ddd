@@ -10,7 +10,7 @@ use syn::{
 
 /// 实体宏（原 aggregate 宏）
 /// - 追加字段：`id: IdType`, `version: usize`（若缺失）并置于字段最前
-/// - 自动为目标结构体实现 `::ddd::entiry::Entity` trait（`new/id/version`）
+/// - 自动为目标结构体实现 `::ddd_domain::entiry::Entity` trait（`new/id/version`）
 /// - 支持参数：`#[entity(id = IdType)]`，默认 `String`
 #[proc_macro_attribute]
 pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -93,7 +93,7 @@ pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
         #out_struct
 
-        impl #impl_generics ::ddd::entiry::Entity for #ident #ty_generics #where_clause {
+        impl #impl_generics ::ddd_domain::entiry::Entity for #ident #ty_generics #where_clause {
             type Id = #id_type;
 
             fn new(aggregate_id: Self::Id) -> Self {
@@ -349,7 +349,7 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let out = quote! {
         #enum_item
 
-        impl ::ddd::domain_event::DomainEvent for #enum_ident {
+        impl ::ddd_domain::domain_event::DomainEvent for #enum_ident {
             fn event_id(&self) -> &str {
                 match self { #( #id_match_arms, )* }
             }

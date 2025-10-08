@@ -4,16 +4,16 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono;
-use ddd::aggregate::Aggregate;
-use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, EventEnvelope};
-use ddd::error::{DomainError, DomainResult};
-use ddd::event_upcaster::EventUpcasterChain;
-use ddd::persist::{
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::aggregate_root::AggregateRoot;
+use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::event_upcaster::EventUpcasterChain;
+use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotRepository, SnapshotRepositoryWithPolicy, deserialize_events, serialize_events,
 };
-use ddd::entiry::Entity;
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -271,7 +271,7 @@ impl Aggregate for OrderAggregate {
 // ============================================================================
 // 使用库提供的 SerializedSnapshot
 // ============================================================================
-// SerializedSnapshot 现在由 ddd::persist 模块提供
+// SerializedSnapshot 现在由 ddd_domain::persist 模块提供
 
 // ============================================================================
 // 内存事件仓储实现

@@ -1,14 +1,13 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono::Utc;
-use ddd::aggregate::Aggregate;
-use ddd::error::{DomainError, DomainResult};
-use ddd::persist::{
-    AggregateRepository,
-    EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::persist::{
+    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
     SnapshottingAggregateRepository,
 };
-use ddd::entiry::Entity;
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -36,7 +35,11 @@ impl Aggregate for Counter {
     }
     fn apply(&mut self, e: &Self::Event) {
         match e {
-            CounterEvent::Incr { aggregate_version, by, .. } => {
+            CounterEvent::Incr {
+                aggregate_version,
+                by,
+                ..
+            } => {
                 self.value += *by;
                 self.version = *aggregate_version;
             }
@@ -140,7 +143,7 @@ fn mk_incr(id: &str, version: usize, by: i64) -> SerializedEvent {
 async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     let repo = Arc::new(CountingEventRepo::default());
     let snaps = Arc::new(InMemorySnapshotRepo::default());
-    let chain = Arc::new(ddd::event_upcaster::EventUpcasterChain::default());
+    let chain = Arc::new(ddd_domain::event_upcaster::EventUpcasterChain::default());
     let store =
         SnapshottingAggregateRepository::<Counter, _, _>::new(repo.clone(), snaps.clone(), chain);
 

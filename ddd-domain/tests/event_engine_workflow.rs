@@ -1,16 +1,16 @@
 use anyhow::Result as AnyResult;
 use chrono::Utc;
-use ddd::error::{DomainError, DomainResult};
-use ddd::eventing::{
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
     HandledEventType,
 };
-use ddd::persist::SerializedEvent;
+use ddd_domain::persist::SerializedEvent;
 use futures_core::stream::BoxStream;
 use futures_util::StreamExt;
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
@@ -177,12 +177,15 @@ async fn event_engine_full_workflow() -> AnyResult<()> {
     // 使用 timeout + 轮询条件，减少固定 sleep 带来的不确定性
     let _ = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
-            if deliverer.delivered.load(Ordering::Relaxed) >= 2 && reclaimer.reclaimed.load(Ordering::Relaxed) >= 1 {
+            if deliverer.delivered.load(Ordering::Relaxed) >= 2
+                && reclaimer.reclaimed.load(Ordering::Relaxed) >= 1
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-    }).await;
+    })
+    .await;
     handle.shutdown();
     handle.join().await;
 

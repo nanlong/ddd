@@ -10,6 +10,6 @@ pub mod persist;
 pub mod specification;
 pub mod value_object;
 
-// 允许在本 crate 内部通过 ::ddd 进行自引用，
-// 以便过程宏在本 crate 的单元测试中也能解析到 ::ddd 路径。
-extern crate self as ddd;
+// 允许在本 crate 内部通过 ::ddd_domain 进行自引用，
+// 以便过程宏在本 crate 的单元测试中也能解析到 ::ddd_domain 路径。
+extern crate self as ddd_domain;

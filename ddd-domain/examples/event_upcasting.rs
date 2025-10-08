@@ -16,16 +16,16 @@
 /// - v4: account.withdrew { minor_units: i64, currency: String } - 重命名为 withdrew
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
-use ddd::aggregate::Aggregate;
-use ddd::domain_event::{BusinessContext, EventEnvelope};
-use ddd::error::{DomainError, DomainResult};
-use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
-use ddd::persist::{
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
+use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
     SerializedSnapshot, SnapshotPolicy, SnapshotRepository, SnapshotRepositoryWithPolicy,
     SnapshottingAggregateRepository, serialize_events,
 };
-use ddd::entiry::Entity;
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

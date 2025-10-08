@@ -1,11 +1,13 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono::Utc;
-use ddd::aggregate::Aggregate;
-use ddd::error::{DomainError, DomainResult};
-use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
-use ddd::persist::{AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent};
-use ddd::entiry::Entity;
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
+use ddd_domain::persist::{
+    AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
+};
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

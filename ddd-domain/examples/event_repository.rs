@@ -2,15 +2,15 @@
 /// 演示如何实现事件仓储接口，用于持久化和查询领域事件
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
-use ddd::aggregate::Aggregate;
-use ddd::aggregate_root::AggregateRoot;
-use ddd::domain_event::{BusinessContext, EventEnvelope};
-use ddd::error::{DomainError, DomainResult};
-use ddd::event_upcaster::EventUpcasterChain;
-use ddd::persist::{
+use ddd_domain::aggregate::Aggregate;
+use ddd_domain::aggregate_root::AggregateRoot;
+use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::entiry::Entity;
+use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::event_upcaster::EventUpcasterChain;
+use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
 };
-use ddd::entiry::Entity;
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
