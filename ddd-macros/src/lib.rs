@@ -117,6 +117,77 @@ pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// 实体 ID 宏
+/// 用于为 `tuple struct` 形式的 ID 类型（例如 `struct AccountId(String);`、`struct OrderId(Uuid);`）
+/// 自动实现以下 trait：
+/// - `Display`（要求内部类型实现 `Display`）
+/// - `FromStr`（要求内部类型实现 `FromStr`，并委托解析）
+/// 仅支持单字段的 `tuple struct`。
+#[proc_macro_attribute]
+pub fn entity_id(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let _ = attr; // 暂不支持属性参数
+    let input = parse_macro_input!(item as Item);
+
+    let st = match input {
+        Item::Struct(s) => s,
+        other => {
+            return syn::Error::new(other.span(), "#[entity_id] only on struct")
+                .to_compile_error()
+                .into();
+        }
+    };
+
+    let fields = match &st.fields {
+        syn::Fields::Unnamed(f) if f.unnamed.len() == 1 => f,
+        syn::Fields::Unnamed(f) => {
+            return syn::Error::new(
+                f.span(),
+                "#[entity_id] requires a tuple struct with exactly one field",
+            )
+            .to_compile_error()
+            .into();
+        }
+        _ => {
+            return syn::Error::new(
+                st.span(),
+                "#[entity_id] supports only tuple struct, e.g., struct X(String);",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
+    let inner_ty = &fields.unnamed.first().unwrap().ty;
+
+    let ident = &st.ident;
+    let generics = st.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let out = quote! {
+        #st
+
+        impl #impl_generics ::std::str::FromStr for #ident #ty_generics #where_clause
+        where #inner_ty: ::std::str::FromStr
+        {
+            type Err = <#inner_ty as ::std::str::FromStr>::Err;
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+                let inner: #inner_ty = s.parse()?;
+                ::std::result::Result::Ok(Self(inner))
+            }
+        }
+
+        impl #impl_generics ::std::fmt::Display for #ident #ty_generics #where_clause
+        where #inner_ty: ::std::fmt::Display
+        {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::std::write!(f, "{}", self.0)
+            }
+        }
+    };
+
+    TokenStream::from(out)
+}
+
 /// 仅支持形如：
 /// pub enum XxxEvent {
 ///     Variant { field_a: T, ... },

@@ -7,10 +7,9 @@ use ddd::domain_event::{BusinessContext, EventEnvelope};
 use ddd::entiry::Entity;
 use ddd::error::DomainError;
 use ddd::persist::AggregateRepository;
-use ddd_macros::{entity, event};
+use ddd_macros::{entity, entity_id, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
@@ -19,27 +18,9 @@ use ulid::Ulid;
 // 领域模型定义
 // ============================================================================
 
+#[entity_id]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub struct AccountId(String);
-
-impl fmt::Display for AccountId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for AccountId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for AccountId {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AccountId(s.to_string()))
-    }
-}
+pub struct AccountId(Ulid);
 
 #[entity(id = AccountId)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -234,7 +215,7 @@ async fn main() {
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
-    let loaded = repo.load(id.as_ref()).await.unwrap().unwrap();
+    let loaded = repo.load(&id.to_string()).await.unwrap().unwrap();
     println!("\n--- 重新加载聚合 ---");
     println!(
         "聚合: id={}, 版本={}, 余额={}",

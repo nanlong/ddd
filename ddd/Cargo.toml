@@ -17,7 +17,7 @@ thiserror = { version = "1.0" }
 
 [dev-dependencies]
 ddd-macros = { path = "../ddd-macros" }
-ulid = { version = "1.2" }
+ulid = { version = "1.2", features = ["serde"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 anyhow = { version = "1.0" }
 

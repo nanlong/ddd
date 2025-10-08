@@ -33,11 +33,8 @@ where
         command: A::Command,
         context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
-        // 从仓库加载聚合
-        let loaded = self.repo.load(aggregate_id.as_ref()).await?;
-
         // 如果不存在则创建新的聚合实例
-        let mut aggregate = match loaded {
+        let mut aggregate = match self.repo.load(&aggregate_id.to_string()).await? {
             Some(aggregate) => aggregate,
             None => <A as Entity>::new(aggregate_id.clone()),
         };

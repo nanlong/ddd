@@ -1,7 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
 pub trait Entity: Send + Sync {
-    type Id: FromStr + AsRef<str> + Clone + Display;
+    type Id: FromStr + Clone + Display;
 
     fn new(aggregate_id: Self::Id) -> Self;
 
