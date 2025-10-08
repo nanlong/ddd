@@ -1,5 +1,5 @@
 [workspace]
-members = ["ddd-domain", "ddd-macros"]
+members = ["ddd-application","ddd-domain", "ddd-macros"]
 resolver = "3"
 
 [workspace.dependencies]
