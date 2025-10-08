@@ -1,7 +1,7 @@
-use ddd_macros::aggregate;
+use ddd_macros::entity;
 use serde::{Deserialize, Serialize};
 
-#[aggregate(id = String)]
+#[entity(id = String)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Account {
     name: String,

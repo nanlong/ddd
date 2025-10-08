@@ -10,7 +10,8 @@ use ddd::event_upcaster::EventUpcasterChain;
 use ddd::persist::{
     AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
 };
-use ddd_macros::{aggregate, event};
+use ddd::entiry::Entity;
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -20,7 +21,7 @@ use ulid::Ulid;
 // 领域模型定义
 // ============================================================================
 
-#[aggregate]
+#[entity]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct BankAccount {
     balance: i64,
@@ -50,28 +51,9 @@ enum BankAccountEvent {
 
 impl Aggregate for BankAccount {
     const TYPE: &'static str = "bank_account";
-
-    type Id = String;
     type Command = BankAccountCommand;
     type Event = BankAccountEvent;
     type Error = DomainError;
-
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            balance: 0,
-            is_locked: false,
-        }
-    }
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn version(&self) -> usize {
-        self.version
-    }
 
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
@@ -270,7 +252,7 @@ where
         }
 
         let envelopes = deserialize_events::<BankAccount>(&self.upcaster_chain, serialized)?;
-        let mut account = BankAccount::new(aggregate_id.to_string());
+        let mut account = <BankAccount as Entity>::new(aggregate_id.to_string());
         for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
         }

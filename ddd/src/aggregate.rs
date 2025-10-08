@@ -1,21 +1,15 @@
 use crate::domain_event::DomainEvent;
+use crate::entiry::Entity;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{error::Error, fmt::Display, str::FromStr};
+use std::error::Error;
 
 /// 聚合根接口
-pub trait Aggregate: Default + Serialize + DeserializeOwned + Send + Sync {
+pub trait Aggregate: Entity + Default + Serialize + DeserializeOwned + Send + Sync {
     const TYPE: &'static str;
 
-    type Id: FromStr + AsRef<str> + Clone + Display;
     type Command;
     type Event: DomainEvent;
     type Error: Error;
-
-    fn new(aggregate_id: Self::Id) -> Self;
-
-    fn id(&self) -> &Self::Id;
-
-    fn version(&self) -> usize;
 
     /// 执行命令，返回产生的事件列表
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error>;
@@ -27,13 +21,14 @@ pub trait Aggregate: Default + Serialize + DeserializeOwned + Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::Aggregate;
-    use crate::domain_event::{BusinessContext, DomainEvent};
     use crate::domain_event::EventEnvelope;
+    use crate::domain_event::{BusinessContext, DomainEvent};
+    use crate::entiry::Entity;
     use crate::error::DomainError;
-    use ddd_macros::{aggregate, event};
+    use ddd_macros::{entity, event};
     use serde::{Deserialize, Serialize};
 
-    #[aggregate]
+    #[entity]
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     struct Counter {
         value: i32,
@@ -54,27 +49,9 @@ mod tests {
 
     impl Aggregate for Counter {
         const TYPE: &'static str = "counter";
-
-        type Id = String;
         type Command = CounterCommand;
         type Event = CounterEvent;
         type Error = DomainError;
-
-        fn new(aggregate_id: Self::Id) -> Self {
-            Self {
-                id: aggregate_id,
-                version: 0,
-                value: 0,
-            }
-        }
-
-        fn id(&self) -> &Self::Id {
-            &self.id
-        }
-
-        fn version(&self) -> usize {
-            self.version
-        }
 
         fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
             match command {
@@ -166,9 +143,13 @@ mod tests {
         // 继续执行/应用（按顺序执行并逐步提升版本）
         let ev2 = agg2.execute(CounterCommand::Add { amount: 2 }).unwrap();
         let mut agg3 = agg2.clone();
-        for e in &ev2 { agg3.apply(e); }
+        for e in &ev2 {
+            agg3.apply(e);
+        }
         let ev3 = agg3.execute(CounterCommand::Sub { amount: 1 }).unwrap();
-        for e in &ev3 { agg3.apply(e); }
+        for e in &ev3 {
+            agg3.apply(e);
+        }
         assert_eq!(agg3.version(), 3);
         assert_eq!(agg3.value, 4);
 

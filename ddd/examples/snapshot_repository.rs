@@ -13,7 +13,8 @@ use ddd::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotRepository, SnapshotRepositoryWithPolicy, deserialize_events, serialize_events,
 };
-use ddd_macros::{aggregate, event};
+use ddd::entiry::Entity;
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,7 +24,7 @@ use ulid::Ulid;
 // 领域模型定义
 // ============================================================================
 
-#[aggregate]
+#[entity]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct OrderAggregate {
     status: OrderStatus,
@@ -96,29 +97,9 @@ enum OrderEvent {
 
 impl Aggregate for OrderAggregate {
     const TYPE: &'static str = "order";
-
-    type Id = String;
     type Command = OrderCommand;
     type Event = OrderEvent;
     type Error = DomainError;
-
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            status: OrderStatus::Draft,
-            total_amount: 0,
-            items: Vec::new(),
-        }
-    }
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn version(&self) -> usize {
-        self.version
-    }
 
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
@@ -486,7 +467,7 @@ where
         }
 
         let envelopes = deserialize_events::<OrderAggregate>(&self.upcaster_chain, serialized)?;
-        let mut order = OrderAggregate::new(aggregate_id.to_string());
+        let mut order = <OrderAggregate as Entity>::new(aggregate_id.to_string());
         for envelope in envelopes.iter() {
             order.apply(&envelope.payload);
         }

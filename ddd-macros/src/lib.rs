@@ -8,18 +8,19 @@ use syn::{
     parse_macro_input, spanned::Spanned,
 };
 
-/// 聚合根宏
-/// 追加 id: IdType, version: usize 两个字段（若缺失）
-/// 支持键值形式：#[aggregate(id = IdType)]，若不指定则默认为 String。
+/// 实体宏（原 aggregate 宏）
+/// - 追加字段：`id: IdType`, `version: usize`（若缺失）并置于字段最前
+/// - 自动为目标结构体实现 `::ddd::entiry::Entity` trait（`new/id/version`）
+/// - 支持参数：`#[entity(id = IdType)]`，默认 `String`
 #[proc_macro_attribute]
-pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let cfg = parse_macro_input!(attr as AggregateAttrConfig);
+pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let cfg = parse_macro_input!(attr as EntityAttrConfig);
     let input = parse_macro_input!(item as Item);
 
     let mut st = match input {
         Item::Struct(s) => s,
         other => {
-            return syn::Error::new(other.span(), "#[aggregate] only on struct")
+            return syn::Error::new(other.span(), "#[entity] only on struct")
                 .to_compile_error()
                 .into();
         }
@@ -82,8 +83,38 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     fields_named.named = new_named;
 
-    let out = ItemStruct { ..st };
-    TokenStream::from(quote! { #out })
+    let out_struct = ItemStruct { ..st };
+
+    // 为结构体生成 Entity 实现
+    let ident = &out_struct.ident;
+    let generics = out_struct.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let expanded = quote! {
+        #out_struct
+
+        impl #impl_generics ::ddd::entiry::Entity for #ident #ty_generics #where_clause {
+            type Id = #id_type;
+
+            fn new(aggregate_id: Self::Id) -> Self {
+                Self {
+                    id: aggregate_id,
+                    version: 0,
+                    ..Default::default()
+                }
+            }
+
+            fn id(&self) -> &Self::Id {
+                &self.id
+            }
+
+            fn version(&self) -> usize {
+                self.version
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
 }
 
 /// 仅支持形如：
@@ -251,12 +282,15 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn event_id(&self) -> &str {
                 match self { #( #id_match_arms, )* }
             }
+
             fn event_type(&self) -> &str {
                 match self { #( #type_match_arms, )* }
             }
+
             fn event_version(&self) -> usize {
                 match self { #( #ver_match_arms, )* }
             }
+
             fn aggregate_version(&self) -> usize {
                 match self { #( #agg_ver_match_arms, )* }
             }
@@ -364,12 +398,12 @@ impl Parse for VariantEventAttrKv {
     }
 }
 
-// 解析 aggregate 宏键值参数：id = <Type>
-struct AggregateAttrConfig {
+// 解析 entity 宏键值参数：id = <Type>
+struct EntityAttrConfig {
     id_ty: Option<Type>,
 }
 
-impl Parse for AggregateAttrConfig {
+impl Parse for EntityAttrConfig {
     fn parse(input: ParseStream) -> SynResult<Self> {
         let mut id_ty: Option<Type> = None;
 

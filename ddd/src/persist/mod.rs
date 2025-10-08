@@ -20,11 +20,12 @@ mod tests {
     use crate::error::DomainError;
     use crate::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
     use chrono::Utc;
-    use ddd_macros::{aggregate, event};
+    use ddd_macros::{entity, event};
+    use crate::entiry::Entity;
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
 
-    #[aggregate]
+    #[entity]
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     struct User {
         name: String,
@@ -38,24 +39,9 @@ mod tests {
 
     impl Aggregate for User {
         const TYPE: &'static str = "user";
-        type Id = String;
         type Command = ();
         type Event = UserEvent;
         type Error = DomainError;
-
-        fn new(aggregate_id: Self::Id) -> Self {
-            Self {
-                id: aggregate_id,
-                version: 0,
-                name: String::new(),
-            }
-        }
-        fn id(&self) -> &Self::Id {
-            &self.id
-        }
-        fn version(&self) -> usize {
-            self.version
-        }
         fn execute(&self, _command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
             Ok(vec![])
         }
@@ -174,7 +160,7 @@ mod tests {
 
     #[test]
     fn snapshot_serde_and_type_check() {
-        let u = User::new("u-1".to_string());
+        let u = <User as Entity>::new("u-1".to_string());
         let snap = SerializedSnapshot::from_aggregate(&u).unwrap();
         assert_eq!(snap.aggregate_id(), "u-1");
         assert_eq!(snap.aggregate_type(), User::TYPE);
@@ -184,27 +170,14 @@ mod tests {
         assert_eq!(restored.id(), u.id());
 
         // 类型不匹配应报错
-        #[aggregate]
+        #[entity]
         #[derive(Debug, Clone, Default, Serialize, Deserialize)]
         struct Order {}
         impl Aggregate for Order {
             const TYPE: &'static str = "order";
-            type Id = String;
             type Command = ();
             type Event = UserEvent;
             type Error = DomainError;
-            fn new(aggregate_id: Self::Id) -> Self {
-                Self {
-                    id: aggregate_id,
-                    version: 0,
-                }
-            }
-            fn id(&self) -> &Self::Id {
-                &self.id
-            }
-            fn version(&self) -> usize {
-                self.version
-            }
             fn execute(&self, _c: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
                 Ok(vec![])
             }

@@ -5,12 +5,13 @@ use ddd::aggregate::Aggregate;
 use ddd::error::{DomainError, DomainResult};
 use ddd::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd::persist::{AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent};
-use ddd_macros::{aggregate, event};
+use ddd::entiry::Entity;
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-#[aggregate]
+#[entity]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Wallet {
     balance_minor_units: i64,
@@ -25,24 +26,9 @@ enum WalletEvent {
 
 impl Aggregate for Wallet {
     const TYPE: &'static str = "wallet";
-    type Id = String;
     type Command = ();
     type Event = WalletEvent;
     type Error = DomainError;
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            balance_minor_units: 0,
-            currency: "CNY".into(),
-        }
-    }
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-    fn version(&self) -> usize {
-        self.version
-    }
     fn execute(&self, _c: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         Ok(vec![])
     }

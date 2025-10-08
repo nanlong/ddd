@@ -1,6 +1,7 @@
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
+    entiry::Entity,
     persist::AggregateRepository,
 };
 use std::marker::PhantomData;
@@ -38,7 +39,7 @@ where
         // 如果不存在则创建新的聚合实例
         let mut aggregate = match loaded {
             Some(aggregate) => aggregate,
-            None => A::new(aggregate_id.clone()),
+            None => <A as Entity>::new(aggregate_id.clone()),
         };
 
         // 执行命令

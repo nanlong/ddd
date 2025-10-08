@@ -2,6 +2,7 @@ use crate::error::DomainError;
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
+    entiry::Entity,
     event_upcaster::EventUpcasterChain,
     persist::{EventRepository, SnapshotRepository, deserialize_events, serialize_events},
 };
@@ -100,7 +101,7 @@ where
             }
         };
 
-        let mut aggregate = A::new(id);
+        let mut aggregate = <A as Entity>::new(id);
 
         for envelope in envelopes.iter() {
             aggregate.apply(&envelope.payload);
@@ -229,7 +230,7 @@ where
             }
         };
 
-        let mut aggregate = A::new(id);
+        let mut aggregate = <A as Entity>::new(id);
 
         for envelope in envelopes.iter() {
             aggregate.apply(&envelope.payload);

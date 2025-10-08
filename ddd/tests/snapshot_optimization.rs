@@ -8,12 +8,13 @@ use ddd::persist::{
     EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
     SnapshottingAggregateRepository,
 };
-use ddd_macros::{aggregate, event};
+use ddd::entiry::Entity;
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-#[aggregate]
+#[entity]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Counter {
     value: i64,
@@ -27,23 +28,9 @@ enum CounterEvent {
 
 impl Aggregate for Counter {
     const TYPE: &'static str = "counter";
-    type Id = String;
     type Command = ();
     type Event = CounterEvent;
     type Error = DomainError;
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            value: 0,
-        }
-    }
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-    fn version(&self) -> usize {
-        self.version
-    }
     fn execute(&self, _c: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         Ok(vec![])
     }
@@ -167,7 +154,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     repo.save(&all).await?;
 
     // 保存快照（版本 100）
-    let mut agg = Counter::new(id.to_string());
+    let mut agg = <Counter as Entity>::new(id.to_string());
     for v in 1..=100 {
         agg.apply(&CounterEvent::Incr {
             id: ulid::Ulid::new().to_string(),

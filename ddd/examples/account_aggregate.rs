@@ -4,11 +4,14 @@ use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, EventEnvelope};
+use ddd::entiry::Entity;
 use ddd::error::DomainError;
 use ddd::persist::AggregateRepository;
-use ddd_macros::{aggregate, event};
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
@@ -16,7 +19,29 @@ use ulid::Ulid;
 // 领域模型定义
 // ============================================================================
 
-#[aggregate]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct AccountId(String);
+
+impl fmt::Display for AccountId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for AccountId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for AccountId {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(AccountId(s.to_string()))
+    }
+}
+
+#[entity(id = AccountId)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Account {
     balance: usize,
@@ -42,27 +67,9 @@ enum AccountEvent {
 
 impl Aggregate for Account {
     const TYPE: &'static str = "account";
-
-    type Id = String;
     type Command = AccountCommand;
     type Event = AccountEvent;
     type Error = DomainError;
-
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            balance: 0,
-        }
-    }
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn version(&self) -> usize {
-        self.version
-    }
 
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
@@ -153,7 +160,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
     async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, DomainError> {
         let store = self.inner.lock().unwrap();
         if let Some(events) = store.get(aggregate_id) {
-            let mut acc = Account::new(aggregate_id.to_string());
+            let mut acc = <Account as Entity>::new(AccountId::from_str(aggregate_id).unwrap());
             for env in events.iter() {
                 acc.apply(&env.payload);
             }
@@ -186,7 +193,7 @@ async fn main() {
     println!("=== Account 聚合示例 ===\n");
     let repo = InMemoryAccountRepo::default();
     let root = AggregateRoot::<Account, _>::new(repo.clone());
-    let id = String::from("acc-1");
+    let id = AccountId::from_str("acc-1").unwrap();
 
     // 开户
     let events = root
@@ -227,7 +234,7 @@ async fn main() {
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
-    let loaded = repo.load(&id).await.unwrap().unwrap();
+    let loaded = repo.load(id.as_ref()).await.unwrap().unwrap();
     println!("\n--- 重新加载聚合 ---");
     println!(
         "聚合: id={}, 版本={}, 余额={}",

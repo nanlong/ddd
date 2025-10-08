@@ -1,19 +1,20 @@
-use async_trait::async_trait;
 use anyhow::Result as AnyResult;
+use async_trait::async_trait;
 use ddd::aggregate::Aggregate;
 use ddd::aggregate_root::AggregateRoot;
 use ddd::domain_event::{BusinessContext, EventEnvelope};
+use ddd::entiry::Entity;
 use ddd::error::{DomainError, DomainResult};
 use ddd::persist::{
     AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
     serialize_events,
 };
-use ddd_macros::{aggregate, event};
+use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-#[aggregate]
+#[entity]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct BankAccount {
     balance: i64,
@@ -37,24 +38,9 @@ enum Evt {
 
 impl Aggregate for BankAccount {
     const TYPE: &'static str = "bank_account";
-    type Id = String;
     type Command = Cmd;
     type Event = Evt;
     type Error = DomainError;
-    fn new(aggregate_id: Self::Id) -> Self {
-        Self {
-            id: aggregate_id,
-            version: 0,
-            balance: 0,
-            is_locked: false,
-        }
-    }
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-    fn version(&self) -> usize {
-        self.version
-    }
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
             Cmd::Deposit { amount } => {
