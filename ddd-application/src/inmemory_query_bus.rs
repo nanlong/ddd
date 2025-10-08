@@ -57,7 +57,10 @@ impl InMemoryQueryBus {
                             let dto = handler.handle(ctx, *q).await?;
                             Ok(Box::new(dto) as BoxAnySend)
                         }
-                        Err(_) => Err(AppError::TypeMismatch { expected: Q::NAME, found: "unknown" }),
+                        Err(_) => Err(AppError::TypeMismatch {
+                            expected: Q::NAME,
+                            found: "unknown",
+                        }),
                     }
                 })
             })
@@ -83,5 +86,108 @@ impl QueryBus for InMemoryQueryBus {
                 found: "unknown",
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dto::Dto;
+    use crate::error::AppError;
+    use crate::query::Query;
+    use crate::query_handler::QueryHandler;
+    use serde::Serialize;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::task::JoinSet;
+
+    #[derive(Debug)]
+    struct Get;
+    #[derive(Debug, Serialize)]
+    struct NumDto(pub usize);
+    impl Dto for NumDto {}
+    impl Query for Get {
+        const NAME: &'static str = "Get";
+        type Dto = NumDto;
+    }
+
+    struct GetHandler {
+        counter: Arc<AtomicUsize>,
+    }
+    #[async_trait]
+    impl QueryHandler<Get> for GetHandler {
+        async fn handle(&self, _ctx: &AppContext, _q: Get) -> Result<NumDto, AppError> {
+            let v = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(NumDto(v))
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn register_and_dispatch_works() {
+        let bus = InMemoryQueryBus::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        bus.register::<Get, _>(Arc::new(GetHandler {
+            counter: counter.clone(),
+        }));
+
+        let ctx = AppContext::default();
+        let NumDto(n) = bus.dispatch(&ctx, Get).await.unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn not_found_error_when_unregistered() {
+        let bus = InMemoryQueryBus::new();
+        let ctx = AppContext::default();
+        let err = bus.dispatch(&ctx, Get).await.unwrap_err();
+        match err {
+            AppError::NotFound(name) => assert_eq!(name, Get::NAME),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[derive(Debug, Serialize)]
+    struct WrongDto;
+    impl Dto for WrongDto {}
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn type_mismatch_error_when_result_downcast_fails() {
+        let bus = InMemoryQueryBus::new();
+        // 手动插入一个错误的条目：键是 Get，但闭包返回 WrongDto 而非 NumDto
+        let f: QueryHandlerFn = Arc::new(|_boxed_q, _ctx| {
+            Box::pin(async move { Ok(Box::new(WrongDto) as BoxAnySend) })
+        });
+        bus.handlers.insert(TypeId::of::<Get>(), f);
+
+        let ctx = AppContext::default();
+        let err = bus.dispatch(&ctx, Get).await.unwrap_err();
+        match err {
+            AppError::TypeMismatch { expected, .. } => assert!(expected.contains("NumDto")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_dispatch_is_safe() {
+        let bus = Arc::new(InMemoryQueryBus::new());
+        let counter = Arc::new(AtomicUsize::new(0));
+        bus.register::<Get, _>(Arc::new(GetHandler {
+            counter: counter.clone(),
+        }));
+
+        let mut set = JoinSet::new();
+        let ctx = AppContext::default();
+        for _ in 0..100 {
+            let bus = bus.clone();
+            let ctx = ctx.clone();
+            set.spawn(async move { bus.dispatch(&ctx, Get).await.map(|NumDto(n)| n) });
+        }
+        let mut results = Vec::new();
+        while let Some(res) = set.join_next().await {
+            results.push(res.unwrap().unwrap());
+        }
+        results.sort_unstable();
+        assert_eq!(results.len(), 100);
+        assert_eq!(results[0], 1);
+        assert_eq!(results[99], 100);
     }
 }
