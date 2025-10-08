@@ -48,7 +48,6 @@ impl CommandHandler<DeleteUser> for DeleteUserHandler {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 使用 InMemoryCommandBus（别名）进行进程内分发
     let bus = InMemoryCommandBus::new();
     bus.register::<CreateUser, _>(Arc::new(CreateUserHandler));
     bus.register::<DeleteUser, _>(Arc::new(DeleteUserHandler));

@@ -74,7 +74,6 @@ impl Query for ListUsers {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 使用 InMemoryQueryBus（别名）进行进程内查询分发
     let bus = InMemoryQueryBus::new();
     bus.register::<GetUser, _>(Arc::new(GetUserHandler));
     bus.register::<ListUsers, _>(Arc::new(ListUsersHandler));
