@@ -1,3 +1,8 @@
+//! 事件仓储协议
+//!
+//! 定义按聚合读取全部或增量事件与批量保存的接口；
+//! 并提供扩展方法将读取结果与上抬链组合为 `AggregateEvents`。
+//!
 use crate::{
     aggregate::Aggregate,
     domain_event::AggregateEvents,

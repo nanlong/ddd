@@ -1,3 +1,8 @@
+//! 聚合仓储组合实现
+//!
+//! 基于事件溯源（Event Store）与快照（Snapshot）的通用聚合仓储实现，
+//! 通过事件上抬链在重建过程中完成旧事件兼容。
+//!
 use crate::error::DomainError;
 use crate::{
     aggregate::Aggregate,

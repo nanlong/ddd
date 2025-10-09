@@ -1,3 +1,11 @@
+//! 事件引擎（EventEngine）
+//!
+//! 统一编排“投递 → 订阅 → 分发处理”的长驻任务：
+//! - 周期从中继与回收器拉取事件并发布至总线；
+//! - 订阅总线事件流，按处理器匹配分发并发执行；
+//! - 失败标记与补偿重放；
+//! - 提供关闭与等待的 `EngineHandle`。
+//!
 use super::handler::HandledEventType;
 use super::{EventBus, EventDeliverer, EventHandler, EventReclaimer};
 use crate::persist::SerializedEvent;

@@ -1,3 +1,8 @@
+//! 事件总线（EventBus）协议
+//!
+//! 定义事件发布与订阅的统一抽象，支持批量发布与 'static 生命周期事件流，
+//! 以便在异步运行时（如 tokio::spawn）中消费。
+//!
 use crate::{error::DomainResult as Result, persist::SerializedEvent};
 use async_trait::async_trait;
 use futures_core::stream::BoxStream;

@@ -1,18 +1,28 @@
+//! 领域事件（Domain Event）与事件集合
+//!
+//! 定义事件载荷需要实现的最小接口（`DomainEvent`），以及将事件与元数据/上下文
+//! 封装后的 `EventEnvelope` 与辅助集合类型 `AggregateEvents`。
+//!
 use crate::aggregate::Aggregate;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{fmt, ops::Deref, slice::Iter, vec::IntoIter};
 
+/// 领域事件载荷需要满足的通用能力边界
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
 {
+    /// 事件唯一标识
     fn event_id(&self) -> &str;
 
+    /// 事件类型（形如 `OrderEvent.Created` 或自定义类型名）
     fn event_type(&self) -> &str;
 
+    /// 事件载荷版本（用于版本兼容与上抬）
     fn event_version(&self) -> usize;
 
+    /// 事件对应的聚合版本（用于并发控制）
     fn aggregate_version(&self) -> usize;
 }
 
@@ -65,7 +75,7 @@ impl BusinessContext {
     }
 }
 
-/// 事件信封，包含事件及其元数据
+/// 事件信封，包含事件载荷、元数据与业务上下文
 #[derive(Debug, Clone)]
 pub struct EventEnvelope<A>
 where
@@ -95,7 +105,7 @@ where
     }
 }
 
-/// 聚合事件集合，按时间顺序排列，加载当前聚合根所有的事件
+/// 聚合事件集合，按时间顺序排列，便于获取创建/修改者与时间等信息
 pub struct AggregateEvents<A>
 where
     A: Aggregate,

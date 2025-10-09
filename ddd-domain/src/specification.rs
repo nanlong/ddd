@@ -1,3 +1,7 @@
+//! 规约（Specification）模式
+//!
+//! 用于封装业务规则并支持 AND/OR/NOT 组合，便于复用与测试。
+//!
 /// 规约模式的核心 trait
 ///
 /// 用于封装业务规则，使其可复用、可组合和可测试
@@ -32,7 +36,7 @@ pub trait Specification<T> {
     }
 }
 
-/// 为 Box<dyn Specification<T>> 实现 Specification trait
+/// 为 `Box<dyn Specification<T>>` 实现 Specification trait
 /// 使得可以直接使用 Box 类型的规约
 impl<T> Specification<T> for Box<dyn Specification<T>> {
     fn is_satisfied_by(&self, candidate: &T) -> bool {

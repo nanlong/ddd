@@ -1,3 +1,9 @@
+//! 事件上抬（Event Upcasting）
+//!
+//! 当事件载荷结构演进时，通过上抬器（`EventUpcaster`）在读取路径对旧事件进行
+//! 逐步转换（拆分/合并/重命名/丢弃等），`EventUpcasterChain` 负责串联多步转换
+//! 并在稳定后返回。
+//!
 use crate::{error::DomainResult as Result, persist::SerializedEvent};
 use std::sync::Arc;
 

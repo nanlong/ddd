@@ -1,3 +1,7 @@
+//! 快照持久化模型（SerializedSnapshot）
+//!
+//! 定义聚合快照在持久化层的标准形态与与聚合实例之间的转换。
+//!
 use crate::{
     aggregate::Aggregate,
     error::{DomainError, DomainResult as Result},

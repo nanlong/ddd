@@ -1,3 +1,10 @@
+//! 聚合（Aggregate）抽象
+//!
+//! 约束一个聚合的核心行为：
+//! - `execute` 将命令转换为事件（不改变状态）；
+//! - `apply` 将事件投影到状态（改变状态）；
+//! - 通过 `Entity` 约束聚合具备标识与版本。
+//!
 use crate::domain_event::DomainEvent;
 use crate::entiry::Entity;
 use serde::{Serialize, de::DeserializeOwned};
@@ -7,8 +14,11 @@ use std::error::Error;
 pub trait Aggregate: Entity + Default + Serialize + DeserializeOwned + Send + Sync {
     const TYPE: &'static str;
 
+    /// 该聚合支持的命令类型
     type Command;
+    /// 该聚合产生的领域事件类型
     type Event: DomainEvent;
+    /// 命令执行或持久化环节的错误类型
     type Error: Error;
 
     /// 执行命令，返回产生的事件列表
