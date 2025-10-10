@@ -51,9 +51,13 @@ impl Metadata {
 /// 业务上下文信息
 #[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
 pub struct BusinessContext {
+    /// 关联ID
     correlation_id: Option<String>,
+    /// 因果ID
     causation_id: Option<String>,
+    /// 触发事件的主体类型（如用户、系统等）
     actor_type: Option<String>,
+    /// 触发事件的主体ID
     actor_id: Option<String>,
 }
 

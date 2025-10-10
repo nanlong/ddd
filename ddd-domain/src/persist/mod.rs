@@ -27,11 +27,11 @@ mod tests {
     use super::*;
     use crate::aggregate::Aggregate;
     use crate::domain_event::{BusinessContext, EventEnvelope};
+    use crate::entiry::Entity;
     use crate::error::DomainError;
     use crate::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
     use chrono::Utc;
     use ddd_macros::{entity, event};
-    use crate::entiry::Entity;
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
 
