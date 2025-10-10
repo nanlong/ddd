@@ -343,8 +343,8 @@ mod tests {
     use chrono::Utc;
     use futures_core::stream::BoxStream;
     use futures_util::StreamExt;
-    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
     use tokio::sync::broadcast;
     use tokio_stream::wrappers::BroadcastStream;
 
@@ -440,7 +440,8 @@ mod tests {
             events: &[&SerializedEvent],
             _reason: &str,
         ) -> DomainResult<()> {
-            self.handler_failed.fetch_add(events.len(), Ordering::Relaxed);
+            self.handler_failed
+                .fetch_add(events.len(), Ordering::Relaxed);
             for e in events {
                 self.stored.lock().unwrap().push((*e).clone());
             }
