@@ -55,6 +55,8 @@ pub struct BusinessContext {
     correlation_id: Option<String>,
     /// 因果ID
     causation_id: Option<String>,
+    /// 业务耗时
+    duration_ms: Option<u128>,
     /// 触发事件的主体类型（如用户、系统等）
     actor_type: Option<String>,
     /// 触发事件的主体ID
@@ -68,6 +70,10 @@ impl BusinessContext {
 
     pub fn causation_id(&self) -> Option<&str> {
         self.causation_id.as_deref()
+    }
+
+    pub fn duration_ms(&self) -> Option<u128> {
+        self.duration_ms
     }
 
     pub fn actor_type(&self) -> Option<&str> {

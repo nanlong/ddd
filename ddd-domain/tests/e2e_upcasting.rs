@@ -2,6 +2,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono::Utc;
 use ddd_domain::aggregate::Aggregate;
+use ddd_domain::domain_event::BusinessContext;
 use ddd_domain::entiry::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
@@ -69,6 +70,14 @@ impl EventUpcaster for V1ToV2 {
                     .or_insert(serde_json::json!("CNY"));
             }
         }
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         Ok(EventUpcasterResult::One(
             SerializedEvent::builder()
                 .event_id(event.event_id().to_string())
@@ -84,6 +93,7 @@ impl EventUpcaster for V1ToV2 {
                 .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                 .occurred_at(event.occurred_at())
                 .payload(p)
+                .context(serde_json::to_value(&business_context)?)
                 .build(),
         ))
     }
@@ -104,6 +114,14 @@ impl EventUpcaster for V2ToV3 {
                 }
             }
         }
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         Ok(EventUpcasterResult::One(
             SerializedEvent::builder()
                 .event_id(event.event_id().to_string())
@@ -119,6 +137,7 @@ impl EventUpcaster for V2ToV3 {
                 .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                 .occurred_at(event.occurred_at())
                 .payload(p)
+                .context(serde_json::to_value(&business_context)?)
                 .build(),
         ))
     }
@@ -165,6 +184,13 @@ impl EventRepository for MemRepo {
 fn mk_v1(id: &str, amount_yuan: i64) -> SerializedEvent {
     let eid = ulid::Ulid::new().to_string();
     let payload = serde_json::json!({"Deposited": {"id": eid, "aggregate_version": 0, "amount": amount_yuan }});
+    let biz = BusinessContext::builder()
+        .maybe_correlation_id(Some(format!("cor-{id}")))
+        .maybe_causation_id(Some(format!("cau-{id}")))
+        .maybe_actor_type(Some("user".into()))
+        .maybe_actor_id(Some("u-1".into()))
+        .build();
+
     SerializedEvent::builder()
         .event_id(eid)
         .event_type("WalletEvent.Deposited".into())
@@ -173,14 +199,26 @@ fn mk_v1(id: &str, amount_yuan: i64) -> SerializedEvent {
         .aggregate_id(id.to_string())
         .aggregate_type("wallet".into())
         .aggregate_version(0)
+        .correlation_id(format!("cor-{id}"))
+        .causation_id(format!("cau-{id}"))
+        .actor_type("user".into())
+        .actor_id("u-1".into())
         .occurred_at(Utc::now())
         .payload(payload)
+        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
         .build()
 }
 
 fn mk_v2(id: &str, amount_yuan: i64, currency: &str) -> SerializedEvent {
     let eid = ulid::Ulid::new().to_string();
     let payload = serde_json::json!({"Deposited": {"id": eid, "aggregate_version": 0, "amount": amount_yuan, "currency": currency }});
+    let biz = BusinessContext::builder()
+        .maybe_correlation_id(Some(format!("cor-{id}")))
+        .maybe_causation_id(Some(format!("cau-{id}")))
+        .maybe_actor_type(Some("user".into()))
+        .maybe_actor_id(Some("u-1".into()))
+        .build();
+
     SerializedEvent::builder()
         .event_id(eid)
         .event_type("WalletEvent.Deposited".into())
@@ -189,8 +227,13 @@ fn mk_v2(id: &str, amount_yuan: i64, currency: &str) -> SerializedEvent {
         .aggregate_id(id.to_string())
         .aggregate_type("wallet".into())
         .aggregate_version(0)
+        .correlation_id(format!("cor-{id}"))
+        .causation_id(format!("cau-{id}"))
+        .actor_type("user".into())
+        .actor_id("u-1".into())
         .occurred_at(Utc::now())
         .payload(payload)
+        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
         .build()
 }
 

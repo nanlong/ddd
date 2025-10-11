@@ -338,6 +338,7 @@ impl Drop for EngineHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain_event::BusinessContext;
     use crate::error::{DomainError, DomainResult};
     use async_trait::async_trait;
     use chrono::Utc;
@@ -479,6 +480,12 @@ mod tests {
     }
 
     fn mk_event(id: &str, ty: &str) -> SerializedEvent {
+        let biz = BusinessContext::builder()
+            .maybe_correlation_id(Some(format!("cor-{id}")))
+            .maybe_causation_id(Some(format!("cau-{id}")))
+            .maybe_actor_type(Some("user".into()))
+            .maybe_actor_id(Some("u-1".into()))
+            .build();
         SerializedEvent::builder()
             .event_id(id.to_string())
             .event_type(ty.to_string())
@@ -486,8 +493,13 @@ mod tests {
             .aggregate_id("agg-1".to_string())
             .aggregate_type("Demo".to_string())
             .aggregate_version(1)
+            .correlation_id(format!("cor-{id}"))
+            .causation_id(format!("cau-{id}"))
+            .actor_type("user".into())
+            .actor_id("u-1".into())
             .occurred_at(Utc::now())
             .payload(serde_json::json!({"id": id}))
+            .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
             .build()
     }
 

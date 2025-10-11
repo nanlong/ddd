@@ -136,6 +136,12 @@ mod tests {
                     .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                     .occurred_at(event.occurred_at())
                     .payload(p)
+                    .context(serde_json::json!({
+                        "upcasted": true,
+                        "from_version": 1,
+                        "upcaster": "CreatedV1ToV2",
+                        "field_renamed": "username -> name"
+                    }))
                     .build(),
             ))
         }
@@ -154,8 +160,23 @@ mod tests {
             .aggregate_id("u-2".to_string())
             .aggregate_type("user".to_string())
             .aggregate_version(1)
+            .maybe_correlation_id(Some("c-legacy".into()))
+            .maybe_causation_id(Some("cause-legacy".into()))
+            .maybe_actor_type(Some("user".into()))
+            .maybe_actor_id(Some("u-actor".into()))
             .occurred_at(Utc::now())
             .payload(payload)
+            .context(
+                serde_json::to_value(
+                    &BusinessContext::builder()
+                        .maybe_correlation_id(Some("c-legacy".into()))
+                        .maybe_causation_id(Some("cause-legacy".into()))
+                        .maybe_actor_type(Some("user".into()))
+                        .maybe_actor_id(Some("u-actor".into()))
+                        .build(),
+                )
+                .expect("serialize BusinessContext"),
+            )
             .build();
 
         let chain: EventUpcasterChain = vec![Arc::new(CreatedV1ToV2) as Arc<dyn EventUpcaster>]

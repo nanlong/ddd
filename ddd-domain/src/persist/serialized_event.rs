@@ -42,6 +42,8 @@ pub struct SerializedEvent {
     occurred_at: DateTime<Utc>,
     /// 事件负载，存储事件的具体数据
     payload: Value,
+    /// 业务上下文信息（冗余存储，便于查询）
+    context: Value,
 }
 
 impl SerializedEvent {
@@ -96,6 +98,10 @@ impl SerializedEvent {
     pub fn payload(&self) -> &Value {
         &self.payload
     }
+
+    pub fn context(&self) -> &Value {
+        &self.context
+    }
 }
 
 impl<A> TryFrom<&EventEnvelope<A>> for SerializedEvent
@@ -119,6 +125,7 @@ where
             actor_id: envelope.context.actor_id().map(|s| s.to_string()),
             occurred_at: *envelope.metadata.occurred_at(),
             payload: serde_json::to_value(&envelope.payload)?,
+            context: serde_json::to_value(&envelope.context)?,
         })
     }
 }
@@ -138,12 +145,7 @@ where
 
         let payload: A::Event = serde_json::from_value(value.payload.clone())?;
 
-        let context = BusinessContext::builder()
-            .maybe_correlation_id(value.correlation_id.clone())
-            .maybe_causation_id(value.causation_id.clone())
-            .maybe_actor_type(value.actor_type.clone())
-            .maybe_actor_id(value.actor_id.clone())
-            .build();
+        let context: BusinessContext = serde_json::from_value(value.context.clone())?;
 
         Ok(EventEnvelope {
             metadata,

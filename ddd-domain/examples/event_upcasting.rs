@@ -159,6 +159,14 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
             obj.insert("currency".to_string(), serde_json::json!("CNY"));
         }
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let upgraded = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
@@ -173,6 +181,7 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(upgraded))
@@ -216,6 +225,14 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
             obj.insert("minor_units".to_string(), serde_json::json!(minor_units));
         }
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let upgraded = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
@@ -230,6 +247,7 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(upgraded))
@@ -279,6 +297,14 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
             }
         });
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let deposited_event = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type("account.deposited".to_string())
@@ -293,6 +319,7 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(deposited_payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(deposited_event))
@@ -332,6 +359,14 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
             obj.insert("currency".to_string(), serde_json::json!("CNY"));
         }
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let upgraded = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
@@ -346,6 +381,7 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(upgraded))
@@ -388,6 +424,14 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
             obj.insert("minor_units".to_string(), serde_json::json!(minor_units));
         }
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let upgraded = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type(event.event_type().to_string())
@@ -402,6 +446,7 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(upgraded))
@@ -451,6 +496,14 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
             }
         });
 
+        // 重建 BusinessContext 以保留原始事件的业务上下文
+        let business_context = BusinessContext::builder()
+            .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+            .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+            .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+            .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+            .build();
+
         let withdrew_event = SerializedEvent::builder()
             .event_id(event.event_id().to_string())
             .event_type("account.withdrew".to_string())
@@ -465,6 +518,7 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
             .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
             .occurred_at(event.occurred_at())
             .payload(withdrew_payload)
+            .context(serde_json::to_value(&business_context)?)
             .build();
 
         Ok(EventUpcasterResult::One(withdrew_event))
@@ -626,6 +680,13 @@ fn create_deposit(
         ),
         _ => panic!("Unsupported version"),
     };
+    let biz = BusinessContext::builder()
+        .maybe_correlation_id(Some(format!("cor-{id}")))
+        .maybe_causation_id(Some(format!("cau-{id}")))
+        .maybe_actor_type(Some("user".into()))
+        .maybe_actor_id(Some("u-1".into()))
+        .build();
+
     SerializedEvent::builder()
         .event_id(eid)
         .event_type(event_type.to_string())
@@ -634,8 +695,13 @@ fn create_deposit(
         .aggregate_id(id.to_string())
         .aggregate_type("bank_account".to_string())
         .aggregate_version(aver)
+        .correlation_id(format!("cor-{id}"))
+        .causation_id(format!("cau-{id}"))
+        .actor_type("user".into())
+        .actor_id("u-1".into())
         .occurred_at(chrono::Utc::now())
         .payload(payload)
+        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
         .build()
 }
 
@@ -689,6 +755,13 @@ fn create_withdraw(
         ),
         _ => panic!("Unsupported version"),
     };
+    let biz = BusinessContext::builder()
+        .maybe_correlation_id(Some(format!("cor-{id}")))
+        .maybe_causation_id(Some(format!("cau-{id}")))
+        .maybe_actor_type(Some("user".into()))
+        .maybe_actor_id(Some("u-1".into()))
+        .build();
+
     SerializedEvent::builder()
         .event_id(eid)
         .event_type(event_type.to_string())
@@ -697,8 +770,13 @@ fn create_withdraw(
         .aggregate_id(id.to_string())
         .aggregate_type("bank_account".to_string())
         .aggregate_version(aver)
+        .correlation_id(format!("cor-{id}"))
+        .causation_id(format!("cau-{id}"))
+        .actor_type("user".into())
+        .actor_id("u-1".into())
         .occurred_at(chrono::Utc::now())
         .payload(payload)
+        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
         .build()
 }
 

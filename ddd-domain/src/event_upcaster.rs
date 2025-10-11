@@ -131,22 +131,35 @@ impl Extend<Arc<dyn EventUpcaster>> for EventUpcasterChain {
 #[cfg(test)]
 mod tests {
     use super::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
+    use crate::domain_event::BusinessContext;
     use crate::error::{DomainError, DomainResult};
     use crate::persist::SerializedEvent;
     use chrono::Utc;
     use std::sync::Arc;
 
     fn mk_event(ty: &str, ver: usize, payload: serde_json::Value) -> SerializedEvent {
+        let id = ulid::Ulid::new().to_string();
+        let biz = BusinessContext::builder()
+            .maybe_correlation_id(Some(format!("cor-{id}")))
+            .maybe_causation_id(Some(format!("cau-{id}")))
+            .maybe_actor_type(Some("user".into()))
+            .maybe_actor_id(Some("u-1".into()))
+            .build();
         SerializedEvent::builder()
-            .event_id(ulid::Ulid::new().to_string())
+            .event_id(id)
             .event_type(ty.to_string())
             .event_version(ver)
             .maybe_sequence_number(None)
             .aggregate_id("a-1".to_string())
             .aggregate_type("Order".to_string())
             .aggregate_version(0)
+            .correlation_id("cor-a-1".into())
+            .causation_id("cau-a-1".into())
+            .actor_type("user".into())
+            .actor_id("u-1".into())
             .occurred_at(Utc::now())
             .payload(payload)
+            .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
             .build()
     }
 
@@ -159,6 +172,13 @@ mod tests {
         fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
             let base = event.payload();
             let id = base.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let business_context = BusinessContext::builder()
+                .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+                .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+                .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+                .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+                .build();
+
             let init = SerializedEvent::builder()
                 .event_id(event.event_id().to_string())
                 .event_type("order.init".to_string())
@@ -173,6 +193,9 @@ mod tests {
                 .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                 .occurred_at(event.occurred_at())
                 .payload(serde_json::json!({ "id": id, "stage": "init" }))
+                .context(
+                    serde_json::to_value(&business_context).expect("serialize BusinessContext"),
+                )
                 .build();
 
             let meta = SerializedEvent::builder()
@@ -189,6 +212,9 @@ mod tests {
                 .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                 .occurred_at(event.occurred_at())
                 .payload(serde_json::json!({ "id": id, "meta": {"source": "legacy"} }))
+                .context(
+                    serde_json::to_value(&business_context).expect("serialize BusinessContext"),
+                )
                 .build();
 
             Ok(EventUpcasterResult::Many(vec![init, meta]))
@@ -211,6 +237,13 @@ mod tests {
             event_type == "order.init" && event_version == 2
         }
         fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
+            let business_context = BusinessContext::builder()
+                .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
+                .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
+                .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
+                .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
+                .build();
+
             let next = SerializedEvent::builder()
                 .event_id(event.event_id().to_string())
                 .event_type("order.created".to_string())
@@ -225,6 +258,9 @@ mod tests {
                 .maybe_actor_id(event.actor_id().map(|s| s.to_string()))
                 .occurred_at(event.occurred_at())
                 .payload(event.payload().clone())
+                .context(
+                    serde_json::to_value(&business_context).expect("serialize BusinessContext"),
+                )
                 .build();
             Ok(EventUpcasterResult::One(next))
         }

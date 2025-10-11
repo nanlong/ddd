@@ -174,7 +174,8 @@ async fn main() {
     println!("=== Account 聚合示例 ===\n");
     let repo = InMemoryAccountRepo::default();
     let root = AggregateRoot::<Account, _>::new(repo.clone());
-    let id = AccountId::from_str("acc-1").unwrap();
+    // 生成有效的 ULID 作为聚合 ID，避免 FromStr 无效长度错误
+    let id = AccountId(Ulid::new());
 
     // 开户
     let events = root

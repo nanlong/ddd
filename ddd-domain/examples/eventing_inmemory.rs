@@ -2,6 +2,7 @@
 /// 展示 Outbox -> Bus -> Handlers -> Reclaimer 的闭环，以及 handler 失败后的补偿重投
 use anyhow::Result as AnyResult;
 use chrono::Utc;
+use ddd_domain::domain_event::BusinessContext;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
@@ -191,6 +192,14 @@ impl EventHandler for PrintHandler {
 // ============================================================================
 
 fn mk_event(id: &str, ty: &str) -> SerializedEvent {
+    // 使用 BusinessContext 作为上下文格式
+    let biz = BusinessContext::builder()
+        .maybe_correlation_id(Some(format!("cor-{id}")))
+        .maybe_causation_id(Some(format!("cau-{id}")))
+        .maybe_actor_type(Some("user".to_string()))
+        .maybe_actor_id(Some("u-1".to_string()))
+        .build();
+
     SerializedEvent::builder()
         .event_id(id.to_string())
         .event_type(ty.to_string())
@@ -198,10 +207,14 @@ fn mk_event(id: &str, ty: &str) -> SerializedEvent {
         .aggregate_id(format!("agg-{}", id))
         .aggregate_type("DemoAggregate".to_string())
         .aggregate_version(1)
+        // 顶层冗余字段与 BusinessContext 保持一致，便于查询
+        .correlation_id(format!("cor-{id}"))
+        .causation_id(format!("cau-{id}"))
         .actor_type("user".to_string())
         .actor_id("u-1".to_string())
         .occurred_at(Utc::now())
         .payload(serde_json::json!({"id": id, "version": 1, "value": 42}))
+        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
         .build()
 }
 
