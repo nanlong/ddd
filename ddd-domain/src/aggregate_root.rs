@@ -6,7 +6,7 @@
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
-    entiry::Entity,
+    entity::Entity,
     persist::AggregateRepository,
 };
 use std::marker::PhantomData;

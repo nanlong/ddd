@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
 use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
-use ddd_domain::entiry::Entity;
+use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,

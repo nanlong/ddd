@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::domain_event::BusinessContext;
-use ddd_domain::entiry::Entity;
+use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,

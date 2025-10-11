@@ -7,7 +7,7 @@ use crate::error::DomainError;
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
-    entiry::Entity,
+    entity::Entity,
     event_upcaster::EventUpcasterChain,
     persist::{EventRepository, SnapshotRepository, deserialize_events, serialize_events},
 };

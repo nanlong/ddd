@@ -27,7 +27,7 @@ mod tests {
     use super::*;
     use crate::aggregate::Aggregate;
     use crate::domain_event::{BusinessContext, EventEnvelope};
-    use crate::entiry::Entity;
+    use crate::entity::Entity;
     use crate::error::DomainError;
     use crate::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
     use chrono::Utc;

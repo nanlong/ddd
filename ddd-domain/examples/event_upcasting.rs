@@ -18,7 +18,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
-use ddd_domain::entiry::Entity;
+use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd_domain::persist::{

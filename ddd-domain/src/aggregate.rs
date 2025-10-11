@@ -6,7 +6,7 @@
 //! - 通过 `Entity` 约束聚合具备标识与版本。
 //!
 use crate::domain_event::DomainEvent;
-use crate::entiry::Entity;
+use crate::entity::Entity;
 use serde::{Serialize, de::DeserializeOwned};
 use std::error::Error;
 
@@ -33,7 +33,7 @@ mod tests {
     use super::Aggregate;
     use crate::domain_event::EventEnvelope;
     use crate::domain_event::{BusinessContext, DomainEvent};
-    use crate::entiry::Entity;
+    use crate::entity::Entity;
     use crate::error::DomainError;
     use ddd_macros::{entity, event};
     use serde::{Deserialize, Serialize};

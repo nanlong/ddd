@@ -20,7 +20,7 @@ pub mod aggregate;
 pub mod aggregate_root;
 pub mod domain_event;
 pub mod domain_service;
-pub mod entiry;
+pub mod entity;
 pub mod error;
 pub mod event_upcaster;
 pub mod eventing;
