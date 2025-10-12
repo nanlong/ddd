@@ -1,7 +1,7 @@
 //! DDD 领域层基础库（ddd-domain）
 //!
 //! 提供以 DDD 为中心的通用抽象与构件，用于在应用中实现：
-//! - 聚合（`aggregate`）与实体（`entiry`）建模
+//! - 聚合（`aggregate`）与实体（`entity`）建模
 //! - 领域事件（`domain_event`）与事件上抬（`event_upcaster`）
 //! - 基于事件溯源与快照的仓储（`persist`）
 //! - 事件系统（`eventing`）：总线、投递/回收器、引擎与处理器

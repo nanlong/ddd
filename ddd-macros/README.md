@@ -9,7 +9,7 @@
 作用于具名字段结构体：
 
 - 若缺失则追加字段：`id: IdType` 与 `version: usize`，并移到字段最前；
-- 实现 `::ddd_domain::entiry::Entity`（`new/id/version`）。
+- 实现 `::ddd_domain::entity::Entity`（`new/id/version`）。
 
 语法：
 
