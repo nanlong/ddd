@@ -201,7 +201,7 @@ impl EventEngine {
 // 正确的做法是：链式调用一次 `event_handlers(...)` 即可。
 
 #[derive(Clone, Default)]
-struct HandlerRegistry {
+pub(crate) struct HandlerRegistry {
     by_type: HashMap<String, Vec<Arc<dyn EventHandler>>>,
     all: Vec<Arc<dyn EventHandler>>,
 }
