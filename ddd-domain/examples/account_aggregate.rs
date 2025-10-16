@@ -6,11 +6,12 @@ use ddd_domain::aggregate_root::AggregateRoot;
 use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::DomainError;
-use ddd_domain::persist::AggregateRepository;
+use ddd_domain::persist::{
+    AggregateRepository, EventRepository, SerializedEvent, serialize_events,
+};
 use ddd_macros::{entity, entity_id, event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
@@ -131,24 +132,76 @@ impl Aggregate for Account {
     }
 }
 
+// 事件仓储的内存实现（仅用于示例）
 #[derive(Default, Clone)]
+struct InMemoryEventRepository {
+    // aggregate_id -> 事件列表
+    events: Arc<Mutex<HashMap<String, Vec<SerializedEvent>>>>,
+}
+
+#[async_trait]
+impl EventRepository for InMemoryEventRepository {
+    async fn get_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        let events = self.events.lock().unwrap();
+        Ok(events.get(aggregate_id).cloned().unwrap_or_default())
+    }
+
+    async fn get_last_events<A: Aggregate>(
+        &self,
+        aggregate_id: &str,
+        last_version: usize,
+    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        let events = self.events.lock().unwrap();
+        Ok(events
+            .get(aggregate_id)
+            .map(|evts| {
+                evts
+                    .iter()
+                    .filter(|e| e.aggregate_version() > last_version)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    async fn save(&self, events: &[SerializedEvent]) -> ddd_domain::error::DomainResult<()> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let mut store = self.events.lock().unwrap();
+        let aggregate_id = events[0].aggregate_id().to_string();
+        let entry = store.entry(aggregate_id).or_default();
+        entry.extend_from_slice(events);
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 struct InMemoryAccountRepo {
-    inner: Arc<Mutex<HashMap<String, Vec<EventEnvelope<Account>>>>>,
+    // 最新聚合状态（避免通过事件重放恢复）
+    states: Arc<Mutex<HashMap<String, Account>>>,
+    // 事件存储依赖（示例注入内存实现）
+    event_repo: Arc<InMemoryEventRepository>,
+}
+
+impl InMemoryAccountRepo {
+    fn new(event_repo: Arc<InMemoryEventRepository>) -> Self {
+        Self {
+            states: Arc::new(Mutex::new(HashMap::new())),
+            event_repo,
+        }
+    }
 }
 
 #[async_trait]
 impl AggregateRepository<Account> for InMemoryAccountRepo {
     async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, DomainError> {
-        let store = self.inner.lock().unwrap();
-        if let Some(events) = store.get(aggregate_id) {
-            let mut acc = <Account as Entity>::new(AccountId::from_str(aggregate_id).unwrap());
-            for env in events.iter() {
-                acc.apply(&env.payload);
-            }
-            Ok(Some(acc))
-        } else {
-            Ok(None)
-        }
+        // 不通过事件重放恢复，直接读取最新聚合快照
+        let states = self.states.lock().unwrap();
+        Ok(states.get(aggregate_id).cloned())
     }
 
     async fn save(
@@ -157,22 +210,49 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
         events: Vec<AccountEvent>,
         context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<Account>>, DomainError> {
-        let mut store = self.inner.lock().unwrap();
-        let entry = store.entry(aggregate.id().to_string()).or_default();
-        let mut out = Vec::with_capacity(events.len());
-        for e in events {
-            let env = EventEnvelope::<Account>::new(aggregate.id(), e, context.clone());
-            entry.push(env.clone());
-            out.push(env);
+        // 先封装事件
+        let envelopes: Vec<EventEnvelope<Account>> = events
+            .into_iter()
+            .map(|e| EventEnvelope::new(aggregate.id(), e, context.clone()))
+            .collect();
+
+        // 乐观锁校验：预期版本 = 当前聚合版本 - 新事件数量
+        let expected_version = aggregate
+            .version()
+            .saturating_sub(envelopes.len());
+
+        let actual_version = {
+            let states = self.states.lock().unwrap();
+            states
+                .get(&aggregate.id().to_string())
+                .map(|a| a.version())
+                .unwrap_or(0)
+        };
+
+        if actual_version != expected_version {
+            return Err(DomainError::VersionConflict {
+                expected: expected_version,
+                actual: actual_version,
+            });
         }
-        Ok(out)
+
+        // 事件持久化（依赖事件仓储）
+        let serialized = serialize_events(&envelopes)?;
+        self.event_repo.save(&serialized).await?;
+
+        // 更新内存中的最新聚合状态
+        let mut states = self.states.lock().unwrap();
+        states.insert(aggregate.id().to_string(), aggregate.clone());
+
+        Ok(envelopes)
     }
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     println!("=== Account 聚合示例 ===\n");
-    let repo = InMemoryAccountRepo::default();
+    let event_repo = Arc::new(InMemoryEventRepository::default());
+    let repo = InMemoryAccountRepo::new(event_repo);
     let root = AggregateRoot::<Account, _>::new(repo.clone());
     // 生成有效的 ULID 作为聚合 ID，避免 FromStr 无效长度错误
     let id = AccountId(Ulid::new());
