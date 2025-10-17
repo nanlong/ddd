@@ -83,8 +83,8 @@ impl EventRepository for CountingEventRepo {
             .get(aggregate_id)
             .map(|v| {
                 v.iter()
-                    .cloned()
                     .filter(|e| e.aggregate_version() > last_version)
+                    .cloned()
                     .collect()
             })
             .unwrap_or_default())

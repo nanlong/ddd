@@ -3,7 +3,6 @@
 /// 快照机制可以避免重放大量历史事件，直接从快照恢复聚合状态
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
-use chrono;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
 use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
@@ -32,20 +31,15 @@ struct OrderAggregate {
     items: Vec<OrderItem>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 enum OrderStatus {
+    #[default]
     Draft,
     Confirmed,
     Paid,
     Shipped,
     Delivered,
     Cancelled,
-}
-
-impl Default for OrderStatus {
-    fn default() -> Self {
-        Self::Draft
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -309,7 +303,7 @@ impl EventRepository for InMemoryEventRepository {
                     .cloned()
                     .collect()
             })
-            .unwrap_or_else(Vec::new))
+            .unwrap_or_default())
     }
 
     /// 保存事件到仓储
@@ -332,10 +326,11 @@ impl EventRepository for InMemoryEventRepository {
 // 内存快照仓储实现
 // ============================================================================
 
-#[derive(Clone)]
+type SnapshotsMap = HashMap<(String, String), Vec<SerializedSnapshot>>;
+
 struct InMemorySnapshotRepository {
     // (aggregate_type, aggregate_id) -> 快照列表（按版本排序），策略由装饰器控制
-    snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+    snapshots: Arc<Mutex<SnapshotsMap>>,
 }
 
 impl Default for InMemorySnapshotRepository {

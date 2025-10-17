@@ -24,6 +24,7 @@ pub use snapshot_repository::{SnapshotPolicy, SnapshotRepository, SnapshotReposi
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::needless_update)]
     use super::*;
     use crate::aggregate::Aggregate;
     use crate::domain_event::{BusinessContext, EventEnvelope};
@@ -86,7 +87,7 @@ mod tests {
                 .build(),
         );
 
-        let ser = serialize_events(&[env.clone()]).unwrap();
+        let ser = serialize_events(std::slice::from_ref(&env)).unwrap();
         assert_eq!(ser.len(), 1);
         assert_eq!(ser[0].aggregate_id(), "u-1");
         assert_eq!(ser[0].aggregate_type(), User::TYPE);
@@ -114,12 +115,11 @@ mod tests {
         ) -> crate::error::DomainResult<EventUpcasterResult> {
             let mut p = event.payload().clone();
             // 形状：{"Created": { id, aggregate_version, username }}
-            if let Some(obj) = p.as_object_mut() {
-                if let Some(inner) = obj.get_mut("Created").and_then(|v| v.as_object_mut()) {
-                    if let Some(u) = inner.remove("username") {
-                        inner.insert("name".to_string(), u);
-                    }
-                }
+            if let Some(obj) = p.as_object_mut()
+                && let Some(inner) = obj.get_mut("Created").and_then(|v| v.as_object_mut())
+                && let Some(u) = inner.remove("username")
+            {
+                inner.insert("name".to_string(), u);
             }
             Ok(EventUpcasterResult::One(
                 SerializedEvent::builder()
@@ -168,7 +168,7 @@ mod tests {
             .payload(payload)
             .context(
                 serde_json::to_value(
-                    &BusinessContext::builder()
+                    BusinessContext::builder()
                         .maybe_correlation_id(Some("c-legacy".into()))
                         .maybe_causation_id(Some("cause-legacy".into()))
                         .maybe_actor_type(Some("user".into()))

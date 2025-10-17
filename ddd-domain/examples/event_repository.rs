@@ -171,7 +171,7 @@ impl EventRepository for InMemoryEventRepository {
         aggregate_id: &str,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
-        Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
+        Ok(events.get(aggregate_id).cloned().unwrap_or_default())
     }
 
     /// 获取聚合从指定版本之后的事件
@@ -189,7 +189,7 @@ impl EventRepository for InMemoryEventRepository {
                     .cloned()
                     .collect()
             })
-            .unwrap_or_else(Vec::new))
+            .unwrap_or_default())
     }
 
     /// 保存事件到仓储

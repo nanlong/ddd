@@ -63,12 +63,12 @@ impl EventUpcaster for V1ToV2 {
     }
     fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut p = event.payload().clone();
-        if let Some(obj) = p.as_object_mut() {
-            if let Some(inner) = obj.get_mut("Deposited").and_then(|v| v.as_object_mut()) {
-                inner
-                    .entry("currency".to_string())
-                    .or_insert(serde_json::json!("CNY"));
-            }
+        if let Some(obj) = p.as_object_mut()
+            && let Some(inner) = obj.get_mut("Deposited").and_then(|v| v.as_object_mut())
+        {
+            inner
+                .entry("currency".to_string())
+                .or_insert(serde_json::json!("CNY"));
         }
         // 重建 BusinessContext 以保留原始事件的业务上下文
         let business_context = BusinessContext::builder()
@@ -107,12 +107,11 @@ impl EventUpcaster for V2ToV3 {
     }
     fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
         let mut p = event.payload().clone();
-        if let Some(obj) = p.as_object_mut() {
-            if let Some(inner) = obj.get_mut("Deposited").and_then(|v| v.as_object_mut()) {
-                if let Some(amount) = inner.remove("amount").and_then(|v| v.as_i64()) {
-                    inner.insert("minor_units".to_string(), serde_json::json!(amount * 100));
-                }
-            }
+        if let Some(obj) = p.as_object_mut()
+            && let Some(inner) = obj.get_mut("Deposited").and_then(|v| v.as_object_mut())
+            && let Some(amount) = inner.remove("amount").and_then(|v| v.as_i64())
+        {
+            inner.insert("minor_units".to_string(), serde_json::json!(amount * 100));
         }
         // 重建 BusinessContext 以保留原始事件的业务上下文
         let business_context = BusinessContext::builder()
@@ -164,8 +163,8 @@ impl EventRepository for MemRepo {
             .get(id)
             .map(|v| {
                 v.iter()
-                    .cloned()
                     .filter(|e| e.aggregate_version() > last)
+                    .cloned()
                     .collect()
             })
             .unwrap_or_default())

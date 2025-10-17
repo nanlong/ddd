@@ -541,7 +541,7 @@ impl EventRepository for InMemoryEventRepository {
         aggregate_id: &str,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let store = self.events.lock().unwrap();
-        Ok(store.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
+        Ok(store.get(aggregate_id).cloned().unwrap_or_default())
     }
 
     async fn get_last_events<A: Aggregate>(
@@ -559,7 +559,7 @@ impl EventRepository for InMemoryEventRepository {
                     .cloned()
                     .collect()
             })
-            .unwrap_or_else(Vec::new))
+            .unwrap_or_default())
     }
 
     async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
@@ -576,10 +576,12 @@ impl EventRepository for InMemoryEventRepository {
     }
 }
 
+type SnapshotsMap = HashMap<(String, String), Vec<SerializedSnapshot>>;
+
 #[derive(Clone)]
 struct InMemorySnapshotRepository {
     // 内存存储快照，策略由外层装饰器控制
-    snapshots: Arc<Mutex<HashMap<(String, String), Vec<SerializedSnapshot>>>>,
+    snapshots: Arc<Mutex<SnapshotsMap>>,
 }
 
 impl Default for InMemorySnapshotRepository {

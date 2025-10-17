@@ -460,13 +460,13 @@ mod tests {
     #[async_trait]
     impl EventHandler for SpyHandler {
         async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
-            if let Some(bad) = self.fail_on {
-                if event.event_type() == bad {
-                    return Err(DomainError::EventHandler {
-                        handler: self.name.into(),
-                        reason: "fail requested".into(),
-                    });
-                }
+            if let Some(bad) = self.fail_on
+                && event.event_type() == bad
+            {
+                return Err(DomainError::EventHandler {
+                    handler: self.name.into(),
+                    reason: "fail requested".into(),
+                });
             }
             *self.handled.lock().unwrap() += 1;
             Ok(())

@@ -118,10 +118,12 @@ pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// 实体 ID 宏
+///
 /// 用于为 `tuple struct` 形式的 ID 类型（例如 `struct AccountId(String);`、`struct OrderId(Uuid);`）
 /// 自动实现以下 trait：
 /// - `Display`（要求内部类型实现 `Display`）
 /// - `FromStr`（要求内部类型实现 `FromStr`，并委托解析）
+///
 /// 仅支持单字段的 `tuple struct`。
 #[proc_macro_attribute]
 pub fn entity_id(attr: TokenStream, item: TokenStream) -> TokenStream {

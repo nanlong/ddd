@@ -161,13 +161,13 @@ struct PrintHandler {
 #[async_trait::async_trait]
 impl EventHandler for PrintHandler {
     async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
-        if let Some(bad) = self.fail_on {
-            if event.event_type() == bad {
-                return Err(DomainError::EventHandler {
-                    handler: self.name.to_string(),
-                    reason: format!("{} failed on {}", self.name, bad),
-                });
-            }
+        if let Some(bad) = self.fail_on
+            && event.event_type() == bad
+        {
+            return Err(DomainError::EventHandler {
+                handler: self.name.to_string(),
+                reason: format!("{} failed on {}", self.name, bad),
+            });
         }
         println!(
             "handler={} type={} aggregate={} payload={}",
