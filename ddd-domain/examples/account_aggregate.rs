@@ -158,8 +158,7 @@ impl EventRepository for InMemoryEventRepository {
         Ok(events
             .get(aggregate_id)
             .map(|evts| {
-                evts
-                    .iter()
+                evts.iter()
                     .filter(|e| e.aggregate_version() > last_version)
                     .cloned()
                     .collect()
@@ -217,9 +216,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
             .collect();
 
         // 乐观锁校验：预期版本 = 当前聚合版本 - 新事件数量
-        let expected_version = aggregate
-            .version()
-            .saturating_sub(envelopes.len());
+        let expected_version = aggregate.version().saturating_sub(envelopes.len());
 
         let actual_version = {
             let states = self.states.lock().unwrap();
