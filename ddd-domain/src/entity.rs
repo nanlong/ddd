@@ -17,4 +17,9 @@ pub trait Entity: Send + Sync {
 
     /// 获取当前版本（用于乐观锁与并发控制）
     fn version(&self) -> usize;
+
+    /// 判断实体是否已创建（版本大于零）
+    fn is_created(&self) -> bool {
+        self.version() > 0
+    }
 }
