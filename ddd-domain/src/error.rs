@@ -47,6 +47,8 @@ pub enum DomainError {
     InvalidCommand { reason: String },
     #[error("invalid state: {reason}")]
     InvalidState { reason: String },
+    #[error("invalid value: {reason}")]
+    InvalidValue { reason: String },
     #[error("not found: {reason}")]
     NotFound { reason: String },
 
