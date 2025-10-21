@@ -106,7 +106,7 @@ where
             }
         };
 
-        let mut aggregate = <A as Entity>::new(id);
+        let mut aggregate = <A as Entity>::new(id, 0);
 
         for envelope in envelopes.iter() {
             aggregate.apply(&envelope.payload);
@@ -235,7 +235,7 @@ where
             }
         };
 
-        let mut aggregate = <A as Entity>::new(id);
+        let mut aggregate = <A as Entity>::new(id, 0);
 
         for envelope in envelopes.iter() {
             aggregate.apply(&envelope.payload);

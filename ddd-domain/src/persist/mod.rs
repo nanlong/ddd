@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn snapshot_serde_and_type_check() {
-        let u = <User as Entity>::new("u-1".to_string());
+        let u = <User as Entity>::new("u-1".to_string(), 0);
         let snap = SerializedSnapshot::from_aggregate(&u).unwrap();
         assert_eq!(snap.aggregate_id(), "u-1");
         assert_eq!(snap.aggregate_type(), User::TYPE);

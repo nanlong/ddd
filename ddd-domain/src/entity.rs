@@ -10,7 +10,7 @@ pub trait Entity: Send + Sync {
     type Id: FromStr + Clone + Display;
 
     /// 使用给定标识创建实体（聚合）
-    fn new(aggregate_id: Self::Id) -> Self;
+    fn new(aggregate_id: Self::Id, version: usize) -> Self;
 
     /// 获取实体标识
     fn id(&self) -> &Self::Id;

@@ -170,7 +170,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     repo.save(all).await?;
 
     // 保存快照（版本 100）
-    let mut agg = <Counter as Entity>::new(id.to_string());
+    let mut agg = <Counter as Entity>::new(id.to_string(), 0);
     for v in 1..=100 {
         agg.apply(&CounterEvent::Incr {
             id: ulid::Ulid::new().to_string(),

@@ -96,10 +96,10 @@ pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics ::ddd_domain::entity::Entity for #ident #ty_generics #where_clause {
             type Id = #id_type;
 
-            fn new(aggregate_id: Self::Id) -> Self {
+            fn new(aggregate_id: Self::Id, version: usize) -> Self {
                 Self {
                     id: aggregate_id,
-                    version: 0,
+                    version,
                     ..Default::default()
                 }
             }

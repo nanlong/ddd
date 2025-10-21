@@ -462,7 +462,7 @@ where
         }
 
         let envelopes = deserialize_events::<OrderAggregate>(&self.upcaster_chain, serialized)?;
-        let mut order = <OrderAggregate as Entity>::new(aggregate_id.to_string());
+        let mut order = <OrderAggregate as Entity>::new(aggregate_id.to_string(), 0);
         for envelope in envelopes.iter() {
             order.apply(&envelope.payload);
         }

@@ -122,7 +122,7 @@ mod tests {
     #[tokio::test]
     async fn aggregate_lifecycle_create_execute_apply_envelope() {
         let id = "c-1".to_string();
-        let agg = Counter::new(id.clone());
+        let agg = Counter::new(id.clone(), 0);
         assert_eq!(agg.id(), &id);
         assert_eq!(agg.version(), 0);
         assert_eq!(agg.value, 0);
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn invalid_commands_should_error() {
-        let agg = Counter::new("c-2".to_string());
+        let agg = Counter::new("c-2".to_string(), 0);
         let err = agg.execute(CounterCommand::Sub { amount: 1 }).unwrap_err();
         match err {
             DomainError::InvalidState { .. } => {}

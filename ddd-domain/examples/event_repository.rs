@@ -252,7 +252,7 @@ where
         }
 
         let envelopes = deserialize_events::<BankAccount>(&self.upcaster_chain, serialized)?;
-        let mut account = <BankAccount as Entity>::new(aggregate_id.to_string());
+        let mut account = <BankAccount as Entity>::new(aggregate_id.to_string(), 0);
         for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
         }
