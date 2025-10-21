@@ -20,7 +20,6 @@ use ulid::Ulid;
 // ============================================================================
 
 #[entity_id]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct AccountId(Ulid);
 
 #[entity(id = AccountId)]

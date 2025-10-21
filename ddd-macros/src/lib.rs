@@ -161,12 +161,63 @@ pub fn entity_id(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let inner_ty = &fields.unnamed.first().unwrap().ty;
 
-    let ident = &st.ident;
-    let generics = st.generics.clone();
+    // 合并/追加 derive：Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash
+    let mut st_out = st.clone();
+    let mut retained_attrs: Vec<syn::Attribute> = Vec::new();
+    let mut existing_derives: Vec<syn::Path> = Vec::new();
+    for attr in st_out.attrs.iter() {
+        if attr.path().is_ident("derive") {
+            if let Ok(list) =
+                attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
+            {
+                for p in list.into_iter() {
+                    existing_derives.push(p);
+                }
+            }
+        } else {
+            retained_attrs.push(attr.clone());
+        }
+    }
+    // 目标必备 derive 顺序
+    let required: Vec<syn::Path> = vec![
+        syn::parse_quote!(Default),
+        syn::parse_quote!(Clone),
+        syn::parse_quote!(Debug),
+        syn::parse_quote!(serde::Serialize),
+        syn::parse_quote!(serde::Deserialize),
+        syn::parse_quote!(PartialEq),
+        syn::parse_quote!(Eq),
+        syn::parse_quote!(Hash),
+    ];
+    // 去重并按顺序合并：必备在前，随后保留用户自定义其它 derive
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut final_derives: Vec<syn::Path> = Vec::new();
+    let mut push_unique = |p: syn::Path| {
+        let key = p.to_token_stream().to_string();
+        if seen.insert(key) {
+            final_derives.push(p);
+        }
+    };
+    for p in required.into_iter() {
+        push_unique(p);
+    }
+    for p in existing_derives.into_iter() {
+        push_unique(p);
+    }
+    let merged: syn::Attribute = syn::parse_quote!(#[derive(#(#final_derives),*)]);
+    st_out.attrs = std::iter::once(merged).chain(retained_attrs).collect();
+
+    let ident = &st_out.ident;
+    let generics = st_out.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let out = quote! {
-        #st
+        #st_out
+
+        // 构造函数：从内部类型构建包装 ID
+        impl #impl_generics #ident #ty_generics #where_clause {
+            pub fn new(value: #inner_ty) -> Self { Self(value) }
+        }
 
         impl #impl_generics ::std::str::FromStr for #ident #ty_generics #where_clause
         where #inner_ty: ::std::str::FromStr
@@ -184,6 +235,35 @@ pub fn entity_id(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 ::std::write!(f, "{}", self.0)
             }
+        }
+
+        // 为任意内部类型提供便捷引用与转换能力
+        impl #impl_generics ::core::convert::AsRef<#inner_ty> for #ident #ty_generics #where_clause {
+            fn as_ref(&self) -> &#inner_ty { &self.0 }
+        }
+
+        impl #impl_generics ::core::convert::AsMut<#inner_ty> for #ident #ty_generics #where_clause {
+            fn as_mut(&mut self) -> &mut #inner_ty { &mut self.0 }
+        }
+
+        impl #impl_generics ::core::convert::From<#ident #ty_generics> for #inner_ty #where_clause {
+            fn from(value: #ident #ty_generics) -> Self { value.0 }
+        }
+
+        impl #impl_generics ::core::convert::From<&#ident #ty_generics> for #inner_ty #where_clause
+        where #inner_ty: ::core::clone::Clone
+        {
+            fn from(value: &#ident #ty_generics) -> Self { value.0.clone() }
+        }
+
+        impl #impl_generics ::core::convert::From<#inner_ty> for #ident #ty_generics #where_clause {
+            fn from(value: #inner_ty) -> Self { Self(value) }
+        }
+
+        impl #impl_generics ::core::convert::From<&#inner_ty> for #ident #ty_generics #where_clause
+        where #inner_ty: ::core::clone::Clone
+        {
+            fn from(value: &#inner_ty) -> Self { Self(value.clone()) }
         }
     };
 
