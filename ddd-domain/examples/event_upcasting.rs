@@ -22,9 +22,9 @@ use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd_domain::persist::{
-    AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
-    SerializedSnapshot, SnapshotPolicy, SnapshotRepository, SnapshotRepositoryWithPolicy,
-    SnapshottingAggregateRepository, serialize_events,
+    AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent, SerializedSnapshot,
+    SnapshotPolicy, SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy,
+    serialize_events,
 };
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
@@ -835,21 +835,19 @@ async fn main() -> AnyResult<()> {
 
     event_repo.save(historical_events).await?;
 
-    // 使用 EventStoreAggregateRepository 自动上抬并重建聚合
-    println!("使用 EventStoreAggregateRepository 重建聚合:");
-    let account = match EventStoreAggregateRepository::<BankAccount, _>::new(
-        event_repo.clone(),
-        upcaster_chain.clone(),
-    )
-    .load(account_id)
-    .await?
-    {
-        Some(aggregate) => aggregate,
-        None => {
-            println!("  ⚠️ 仓储中没有找到事件");
-            return Ok(());
-        }
-    };
+    // 使用 EventSourcedRepo 自动上抬并重建聚合
+    println!("使用 EventSourcedRepo 重建聚合:");
+    let account: BankAccount =
+        match EventSourcedRepo::new(event_repo.clone(), upcaster_chain.clone())
+            .load(account_id)
+            .await?
+        {
+            Some(aggregate) => aggregate,
+            None => {
+                println!("  ⚠️ 仓储中没有找到事件");
+                return Ok(());
+            }
+        };
 
     println!(
         "  ✅ 升级完成: 余额 {} 分 ({:.2} 元), 版本 {}",
@@ -873,7 +871,7 @@ async fn main() -> AnyResult<()> {
     event_repo.save(incremental_events).await?;
 
     // 使用 SnapshottingAggregateRepository：先加载快照，再上抬快照后的增量事件
-    let account_after_snapshot = match SnapshottingAggregateRepository::<BankAccount, _, _>::new(
+    let account_after_snapshot: BankAccount = match SnapshotPolicyRepo::new(
         event_repo.clone(),
         snapshot_repo.clone(),
         upcaster_chain.clone(),
@@ -919,7 +917,7 @@ async fn main() -> AnyResult<()> {
 
     // 总结
     println!("=== 应用场景总结 ===");
-    println!("• 仓储: EventStoreAggregateRepository::load() → 历史事件自动升级");
+    println!("• 仓储: EventSourcedRepo::load() → 历史事件自动升级");
     println!("• 快照: SnapshottingAggregateRepository::load() → 快照 + 增量事件一体化恢复");
     println!("• 存储: EventRepository::save() / serialize_events() → 新事件持久化");
     println!("\n✨ 优势: 历史事件自动升级，业务代码仅处理最新版本");

@@ -6,8 +6,8 @@ use ddd_domain::domain_event::BusinessContext;
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
-    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotRepository,
-    SnapshottingAggregateRepository,
+    AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
+    SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy,
 };
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
@@ -101,12 +101,12 @@ impl EventRepository for CountingEventRepo {
 }
 
 #[derive(Default, Clone)]
-struct InMemorySnapshotRepo {
+struct InMemorySnapshotPolicyRepo {
     snaps: Arc<Mutex<HashMap<String, SerializedSnapshot>>>,
 }
 
 #[async_trait]
-impl SnapshotRepository for InMemorySnapshotRepo {
+impl SnapshotRepository for InMemorySnapshotPolicyRepo {
     async fn get_snapshot<A: Aggregate>(
         &self,
         aggregate_id: &str,
@@ -155,10 +155,12 @@ fn mk_incr(id: &str, version: usize, by: i64) -> SerializedEvent {
 #[tokio::test]
 async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     let repo = Arc::new(CountingEventRepo::default());
-    let snaps = Arc::new(InMemorySnapshotRepo::default());
+    let snaps = Arc::new(SnapshotRepositoryWithPolicy::new(
+        InMemorySnapshotPolicyRepo::default(),
+        SnapshotPolicy::Every(1),
+    ));
     let chain = Arc::new(ddd_domain::event_upcaster::EventUpcasterChain::default());
-    let store =
-        SnapshottingAggregateRepository::<Counter, _, _>::new(repo.clone(), snaps.clone(), chain);
+    let store = SnapshotPolicyRepo::new(repo.clone(), snaps.clone(), chain);
 
     let id = "c-1";
 
@@ -188,7 +190,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     repo.save(inc).await?;
 
     // 加载（应当仅调用一次 get_last_events，且不调用 get_events）
-    let loaded = store.load(id).await?.unwrap();
+    let loaded: Counter = store.load(id).await?.unwrap();
     assert_eq!(loaded.version(), 105);
     assert_eq!(loaded.value, 105);
     assert_eq!(*repo.get_all_calls.lock().unwrap(), 0);

@@ -7,7 +7,7 @@ use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
 use ddd_domain::persist::{
-    AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
+    AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent,
 };
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
@@ -197,7 +197,7 @@ fn mk_v1(id: &str, amount_yuan: i64) -> SerializedEvent {
         .maybe_sequence_number(None)
         .aggregate_id(id.to_string())
         .aggregate_type("wallet".into())
-        .aggregate_version(0)
+        .aggregate_version(1)
         .correlation_id(format!("cor-{id}"))
         .causation_id(format!("cau-{id}"))
         .actor_type("user".into())
@@ -225,7 +225,7 @@ fn mk_v2(id: &str, amount_yuan: i64, currency: &str) -> SerializedEvent {
         .maybe_sequence_number(None)
         .aggregate_id(id.to_string())
         .aggregate_type("wallet".into())
-        .aggregate_version(0)
+        .aggregate_version(2)
         .correlation_id(format!("cor-{id}"))
         .causation_id(format!("cau-{id}"))
         .actor_type("user".into())
@@ -247,10 +247,7 @@ async fn e2e_upcasting_end_to_end() -> AnyResult<()> {
         .into_iter()
         .collect(),
     );
-    let store = Arc::new(EventStoreAggregateRepository::<Wallet, _>::new(
-        repo.clone(),
-        upcasters,
-    ));
+    let store = Arc::new(EventSourcedRepo::new(repo.clone(), upcasters));
 
     let id = "w-1";
     let events = vec![
@@ -259,7 +256,7 @@ async fn e2e_upcasting_end_to_end() -> AnyResult<()> {
     ];
     repo.save(events).await?;
 
-    let agg = store.load(id).await?.unwrap();
+    let agg: Wallet = store.load(id).await?.unwrap();
     assert_eq!(agg.balance_minor_units, 13000);
     assert_eq!(agg.version(), 2);
     Ok(())

@@ -6,8 +6,7 @@ use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
-    AggregateRepository, EventRepository, EventStoreAggregateRepository, SerializedEvent,
-    serialize_events,
+    AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent, serialize_events,
 };
 use ddd_macros::{entity, event};
 use serde::{Deserialize, Serialize};
@@ -155,10 +154,7 @@ impl EventRepository for InMemoryEventRepository {
 async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     let event_repo = Arc::new(InMemoryEventRepository::default());
     let upcasters = Arc::new(ddd_domain::event_upcaster::EventUpcasterChain::default());
-    let repo = Arc::new(EventStoreAggregateRepository::<BankAccount, _>::new(
-        event_repo.clone(),
-        upcasters,
-    ));
+    let repo = Arc::new(EventSourcedRepo::new(event_repo.clone(), upcasters));
     let root = AggregateRoot::<BankAccount, _>::new(repo.clone());
     let id = "acc-1".to_string();
 
@@ -183,7 +179,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     assert_eq!(stored[1].aggregate_version(), 2);
 
     // 使用仓储加载聚合
-    let loaded = repo.load(&id).await?.unwrap();
+    let loaded: BankAccount = repo.load(&id).await?.unwrap();
     assert_eq!(loaded.balance, 700);
     assert_eq!(loaded.version(), 2);
 
@@ -199,7 +195,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
         .collect();
     let ser = serialize_events(&envs).unwrap();
     event_repo.save(ser).await?;
-    let loaded2 = repo.load(&id).await?.unwrap();
+    let loaded2: BankAccount = repo.load(&id).await?.unwrap();
     assert!(loaded2.is_locked);
     assert_eq!(loaded2.version(), 3);
     Ok(())
