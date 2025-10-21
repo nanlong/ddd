@@ -14,6 +14,8 @@ pub enum DomainError {
         #[from]
         source: serde_json::Error,
     },
+    #[error("parse error: {reason}")]
+    Parse { reason: String },
     #[error(
         "upcast failed: type={event_type}, from_version={from_version}, stage={stage:?}, reason={reason}"
     )]
@@ -39,6 +41,8 @@ pub enum DomainError {
     SnapshotRepository { reason: String },
     #[error("repository error: {reason}")]
     Repository { reason: String },
+    #[error("database error: {reason}")]
+    Database { reason: String },
     #[error("version conflict: expected={expected}, actual={actual}")]
     VersionConflict { expected: usize, actual: usize },
 
@@ -59,3 +63,59 @@ pub enum DomainError {
 
 /// 统一 Result 类型别名
 pub type DomainResult<T> = Result<T, DomainError>;
+
+// ---- Cross-crate conversions for infrastructure convenience ----
+// 允许在基础设施层直接使用 `?` 将 sqlx/uuid 等错误转换为 DomainError
+
+impl From<sqlx::Error> for DomainError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            sqlx::Error::RowNotFound => DomainError::NotFound {
+                reason: "row not found".to_string(),
+            },
+            other => DomainError::Database {
+                reason: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<uuid::Error> for DomainError {
+    fn from(err: uuid::Error) -> Self {
+        DomainError::Parse {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<std::num::ParseIntError> for DomainError {
+    fn from(err: std::num::ParseIntError) -> Self {
+        DomainError::Parse {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<std::num::ParseFloatError> for DomainError {
+    fn from(err: std::num::ParseFloatError) -> Self {
+        DomainError::Parse {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<std::str::ParseBoolError> for DomainError {
+    fn from(err: std::str::ParseBoolError) -> Self {
+        DomainError::Parse {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<chrono::ParseError> for DomainError {
+    fn from(err: chrono::ParseError) -> Self {
+        DomainError::Parse {
+            reason: err.to_string(),
+        }
+    }
+}

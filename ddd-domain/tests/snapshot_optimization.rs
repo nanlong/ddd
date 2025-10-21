@@ -89,13 +89,13 @@ impl EventRepository for CountingEventRepo {
             })
             .unwrap_or_default())
     }
-    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
         let mut g = self.events.lock().unwrap();
         let k = events[0].aggregate_id().to_string();
-        g.entry(k).or_default().extend_from_slice(events);
+        g.entry(k).or_default().extend_from_slice(&events);
         Ok(())
     }
 }
@@ -167,7 +167,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     for v in 1..=100 {
         all.push(mk_incr(id, v, 1));
     }
-    repo.save(&all).await?;
+    repo.save(all).await?;
 
     // 保存快照（版本 100）
     let mut agg = <Counter as Entity>::new(id.to_string());
@@ -185,7 +185,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     for v in 101..=105 {
         inc.push(mk_incr(id, v, 1));
     }
-    repo.save(&inc).await?;
+    repo.save(inc).await?;
 
     // 加载（应当仅调用一次 get_last_events，且不调用 get_events）
     let loaded = store.load(id).await?.unwrap();

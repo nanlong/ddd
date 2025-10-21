@@ -169,13 +169,13 @@ impl EventRepository for MemRepo {
             })
             .unwrap_or_default())
     }
-    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
         let mut g = self.m.lock().unwrap();
         let k = events[0].aggregate_id().to_string();
-        g.entry(k).or_default().extend_from_slice(events);
+        g.entry(k).or_default().extend_from_slice(&events);
         Ok(())
     }
 }
@@ -257,7 +257,7 @@ async fn e2e_upcasting_end_to_end() -> AnyResult<()> {
         mk_v1(id, 100),       // 100 元 -> 10000 分
         mk_v2(id, 30, "CNY"), // 30 元 -> 3000 分
     ];
-    repo.save(&events).await?;
+    repo.save(events).await?;
 
     let agg = store.load(id).await?.unwrap();
     assert_eq!(agg.balance_minor_units, 13000);

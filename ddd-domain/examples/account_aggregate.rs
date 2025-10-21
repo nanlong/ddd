@@ -166,14 +166,14 @@ impl EventRepository for InMemoryEventRepository {
             .unwrap_or_default())
     }
 
-    async fn save(&self, events: &[SerializedEvent]) -> ddd_domain::error::DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> ddd_domain::error::DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
         let mut store = self.events.lock().unwrap();
         let aggregate_id = events[0].aggregate_id().to_string();
         let entry = store.entry(aggregate_id).or_default();
-        entry.extend_from_slice(events);
+        entry.extend_from_slice(&events);
         Ok(())
     }
 }
@@ -235,7 +235,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
 
         // 事件持久化（依赖事件仓储）
         let serialized = serialize_events(&envelopes)?;
-        self.event_repo.save(&serialized).await?;
+        self.event_repo.save(serialized).await?;
 
         // 更新内存中的最新聚合状态
         let mut states = self.states.lock().unwrap();

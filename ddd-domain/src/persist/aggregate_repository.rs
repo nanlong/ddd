@@ -133,7 +133,7 @@ where
         let serialized = serialize_events(&envelopes).map_err(A::Error::from)?;
 
         self.event_repo
-            .save(&serialized)
+            .save(serialized)
             .await
             .map_err(A::Error::from)?;
 
@@ -262,7 +262,7 @@ where
         let serialized = serialize_events(&envelopes).map_err(A::Error::from)?;
 
         self.event_repo
-            .save(&serialized)
+            .save(serialized)
             .await
             .map_err(A::Error::from)?;
 

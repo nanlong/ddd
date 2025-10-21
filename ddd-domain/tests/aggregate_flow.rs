@@ -140,13 +140,13 @@ impl EventRepository for InMemoryEventRepository {
             })
             .unwrap_or_default())
     }
-    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
         let mut m = self.inner.lock().unwrap();
         let key = events[0].aggregate_id().to_string();
-        m.entry(key).or_default().extend_from_slice(events);
+        m.entry(key).or_default().extend_from_slice(&events);
         Ok(())
     }
 }
@@ -198,7 +198,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
         .map(|e| EventEnvelope::new(&id, e, BusinessContext::default()))
         .collect();
     let ser = serialize_events(&envs).unwrap();
-    event_repo.save(&ser).await?;
+    event_repo.save(ser).await?;
     let loaded2 = repo.load(&id).await?.unwrap();
     assert!(loaded2.is_locked);
     assert_eq!(loaded2.version(), 3);

@@ -562,7 +562,7 @@ impl EventRepository for InMemoryEventRepository {
             .unwrap_or_default())
     }
 
-    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -570,7 +570,7 @@ impl EventRepository for InMemoryEventRepository {
         let mut store = self.events.lock().unwrap();
         let aggregate_id = events[0].aggregate_id().to_string();
         let entry = store.entry(aggregate_id).or_default();
-        entry.extend_from_slice(events);
+        entry.extend_from_slice(&events);
 
         Ok(())
     }
@@ -833,7 +833,7 @@ async fn main() -> AnyResult<()> {
     }
     println!();
 
-    event_repo.save(&historical_events).await?;
+    event_repo.save(historical_events).await?;
 
     // 使用 EventStoreAggregateRepository 自动上抬并重建聚合
     println!("使用 EventStoreAggregateRepository 重建聚合:");
@@ -866,11 +866,11 @@ async fn main() -> AnyResult<()> {
         create_withdraw(account_id, 2, Some(10), None, Some("CNY")), // v2: 追加取款 10 元
         create_deposit(account_id, 3, None, Some(1500), Some("CNY")), // v3: 追加存款 15 元 (1500分)
     ];
-    event_repo.save(&incremental_events).await?;
     println!(
         "  ➕ 追加 {} 个增量事件（快照之后）",
         incremental_events.len()
     );
+    event_repo.save(incremental_events).await?;
 
     // 使用 SnapshottingAggregateRepository：先加载快照，再上抬快照后的增量事件
     let account_after_snapshot = match SnapshottingAggregateRepository::<BankAccount, _, _>::new(

@@ -307,7 +307,7 @@ impl EventRepository for InMemoryEventRepository {
     }
 
     /// 保存事件到仓储
-    async fn save(&self, events: &[SerializedEvent]) -> DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -316,7 +316,7 @@ impl EventRepository for InMemoryEventRepository {
         let aggregate_id = events[0].aggregate_id().to_string();
 
         let entry = store.entry(aggregate_id.clone()).or_default();
-        entry.extend_from_slice(events);
+        entry.extend_from_slice(&events);
 
         Ok(())
     }
@@ -482,7 +482,7 @@ where
             .collect();
 
         let serialized = serialize_events(&envelopes)?;
-        self.event_repo.save(&serialized).await?;
+        self.event_repo.save(serialized).await?;
 
         Ok(envelopes)
     }

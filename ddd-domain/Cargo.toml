@@ -15,6 +15,13 @@ futures-util = { version = "0.3" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7" }
 thiserror = { version = "2.0" }
+uuid = { version = "1.11", features = ["serde"] }
+sqlx = { version = "0.8", features = [
+  "postgres",
+  "runtime-tokio",
+  "uuid",
+  "chrono",
+], default-features = true }
 
 [dev-dependencies]
 ddd-macros = { path = "../ddd-macros" }
