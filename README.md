@@ -284,7 +284,7 @@ async fn main() -> anyhow::Result<()> {
     let id = AccountId::new("acc-1".to_string());
     root_es
         .execute(
-            &id.to_string(),
+            &id,
             Command::Deposit(100),
             BusinessContext::default(),
         )
@@ -322,8 +322,8 @@ impl SnapshotRepository for DummySnapshotRepo {
 
 核心组件：
 
-- `Command`/`Query`：输入契约（具名常量 `NAME` 用于路由/追踪）。
-- `CommandHandler`/`QueryHandler`：处理具体类型的命令/查询（多为编排、调用领域仓储/服务）。
+- 命令/查询：可使用任意 `Send + Sync + 'static` 的自定义类型，不再要求实现 `Command`/`Query` trait；路由按类型 `TypeId` 完成。
+- `CommandHandler<C>`/`QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `Option<R>`。
 - `CommandBus`/`QueryBus`：按类型分发；提供内存实现 `InMemoryCommandBus`/`InMemoryQueryBus`。
 - `Dto`：输出对象抽象（序列化友好）。
 - `AppContext`：横切上下文（`BusinessContext`、幂等键）。
@@ -333,7 +333,6 @@ impl SnapshotRepository for DummySnapshotRepo {
 
 ```rust
 use async_trait::async_trait;
-use ddd_application::command::Command;
 use ddd_application::command_bus::CommandBus;
 use ddd_application::command_handler::CommandHandler;
 use ddd_application::context::AppContext;
@@ -343,10 +342,6 @@ use ddd_application::InMemoryCommandBus;
 struct CreateUser {
     name: String,
 }
-impl Command for CreateUser {
-    const NAME: &'static str = "CreateUser";
-}
-
 struct CreateUserHandler;
 #[async_trait]
 impl CommandHandler<CreateUser> for CreateUserHandler {
@@ -369,7 +364,6 @@ async fn main() {
 use async_trait::async_trait;
 use ddd_application::context::AppContext;
 use ddd_application::dto::Dto;
-use ddd_application::query::Query;
 use ddd_application::query_bus::QueryBus;
 use ddd_application::query_handler::QueryHandler;
 use ddd_application::InMemoryQueryBus;
@@ -387,25 +381,20 @@ struct UserDto {
 }
 impl Dto for UserDto {}
 
-impl Query for GetUser {
-    const NAME: &'static str = "GetUser";
-    type Dto = UserDto;
-}
-
 struct GetUserHandler;
 #[async_trait]
-impl QueryHandler<GetUser> for GetUserHandler {
-    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<UserDto, ddd_application::error::AppError> {
-        Ok(UserDto { id: q.id, name: "Alice".into() })
+impl QueryHandler<GetUser, UserDto> for GetUserHandler {
+    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<Option<UserDto>, ddd_application::error::AppError> {
+        Ok(Some(UserDto { id: q.id, name: "Alice".into() }))
     }
 }
 
 #[tokio::main]
 async fn main() {
     let bus = InMemoryQueryBus::new();
-    bus.register::<GetUser, _>(std::sync::Arc::new(GetUserHandler));
+    bus.register::<GetUser, UserDto, _>(std::sync::Arc::new(GetUserHandler));
     let _ = bus
-        .dispatch(&AppContext::default(), GetUser { id: 1 })
+        .dispatch::<GetUser, UserDto>(&AppContext::default(), GetUser { id: 1 })
         .await;
 }
 ```
@@ -414,7 +403,7 @@ async fn main() {
 
 ```rust
 use async_trait::async_trait;
-use ddd_application::{command::Command, command_handler::CommandHandler, context::AppContext, error::AppError};
+use ddd_application::{command_handler::CommandHandler, context::AppContext, error::AppError};
 use ddd_domain::{aggregate::Aggregate, aggregate_root::AggregateRoot, domain_event::BusinessContext, persist::AggregateRepository};
 
 // 假设已有 BankAccount 聚合与仓储实现（见上文领域层部分）
@@ -424,10 +413,6 @@ struct Deposit {
     id: String,
     amount: i64,
 }
-impl Command for Deposit {
-    const NAME: &'static str = "Deposit";
-}
-
 struct DepositHandler<R, A>
 where
     R: AggregateRepository<A>,
@@ -454,7 +439,8 @@ where
 并发与错误模型：
 
 - 内存总线基于 `DashMap`，在分发前克隆 `Arc` 闭包避免跨 `await` 持锁；测试覆盖 100 次并发分发。
-- `AppError::NotFound(name)`：未注册处理器；`TypeMismatch`：类型还原失败（保护注册被错误覆盖）。
+- `AppError::NotFound(name)`：未注册处理器（使用类型名 `type_name::<T>()` 标识）。
+- `AppError::TypeMismatch`：在注册表被意外覆盖或类型还原失败时触发（保护性错误）。
 
 ---
 
