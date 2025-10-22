@@ -4,6 +4,14 @@
 
 > 宏在展开时使用绝对路径 `::ddd_domain::...`。`ddd-domain` 已通过 `extern crate self as ddd_domain;` 暴露自引用别名，确保在其测试/示例中宏可正确解析。
 
+## 默认派生一览
+
+- `#[entity]` 默认追加 `#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]`
+- `#[entity_id]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`
+- `#[event]` 默认追加 `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`
+
+说明：宏会与已有 `derive` 合并并去重（对 `Serialize`/`Deserialize` 统一为 `serde::...` 以避免重复）。
+
 ## `#[entity]`
 
 作用于具名字段结构体：
@@ -65,6 +73,8 @@ enum FooEvent {
     },
 }
 ```
+
+注意：不再支持旧语法 `#[event_type]` / `#[event_version]` 作为独立属性；请使用统一的 `#[event(event_type = ..., event_version = ...)]` 形式在变体级覆写。
 
 ## 运行 UI 测试
 
