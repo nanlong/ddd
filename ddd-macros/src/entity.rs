@@ -97,7 +97,10 @@ impl Parse for EntityAttrConfig {
         let mut derive_debug: Option<bool> = None;
 
         if input.is_empty() {
-            return Ok(Self { id_ty, derive_debug });
+            return Ok(Self {
+                id_ty,
+                derive_debug,
+            });
         }
 
         let elems: Punctuated<EntityAttrElem, Token![,]> =
@@ -112,7 +115,7 @@ impl Parse for EntityAttrConfig {
                             "duplicate key 'id' in attribute",
                         ));
                     }
-                    id_ty = Some(ty);
+                    id_ty = Some(*ty);
                 }
                 EntityAttrElem::Debug(b) => {
                     if derive_debug.is_some() {
@@ -126,12 +129,15 @@ impl Parse for EntityAttrConfig {
             }
         }
 
-        Ok(Self { id_ty, derive_debug })
+        Ok(Self {
+            id_ty,
+            derive_debug,
+        })
     }
 }
 
 enum EntityAttrElem {
-    Id(Type),
+    Id(Box<Type>),
     Debug(bool),
 }
 
@@ -141,13 +147,19 @@ impl Parse for EntityAttrElem {
         if key == "id" {
             let _eq: Token![=] = input.parse()?;
             let ty: Type = input.parse()?;
-            Ok(EntityAttrElem::Id(ty))
+            Ok(EntityAttrElem::Id(Box::new(ty)))
         } else if key == "debug" {
             let _eq: Token![=] = input.parse()?;
             let expr: syn::Expr = input.parse()?;
             match expr {
-                syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Bool(b), .. }) => Ok(EntityAttrElem::Debug(b.value())),
-                other => Err(syn::Error::new(other.span(), "expected boolean literal for 'debug'")),
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Bool(b),
+                    ..
+                }) => Ok(EntityAttrElem::Debug(b.value())),
+                other => Err(syn::Error::new(
+                    other.span(),
+                    "expected boolean literal for 'debug'",
+                )),
             }
         } else {
             Err(syn::Error::new(
