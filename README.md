@@ -132,7 +132,10 @@ struct BankAccount {
 }
 
 #[derive(Debug)]
-enum Command { Deposit(i64), Withdraw(i64) }
+enum Command {
+    Deposit(i64),
+    Withdraw(i64),
+}
 
 #[event(version = 1)]
 #[derive(Clone, PartialEq)]
@@ -151,16 +154,40 @@ impl Aggregate for BankAccount {
 
     fn execute(&self, cmd: Command) -> Result<Vec<Evt>, DomainError> {
         match cmd {
-            Command::Deposit(n) if n > 0 => Ok(vec![Evt::Deposited { id: Ulid::new().to_string(), aggregate_version: self.version() + 1, amount: n }]),
-            Command::Withdraw(n) if n > 0 && self.balance >= n => Ok(vec![Evt::Withdrawn { id: Ulid::new().to_string(), aggregate_version: self.version() + 1, amount: n }]),
-            _ => Err(DomainError::InvalidCommand { reason: "invalid amount or insufficient".into() })
+            Command::Deposit(n) if n > 0 => Ok(vec![Evt::Deposited {
+                id: Ulid::new().to_string(),
+                aggregate_version: self.version() + 1,
+                amount: n,
+            }]),
+            Command::Withdraw(n) if n > 0 && self.balance >= n => Ok(vec![Evt::Withdrawn {
+                id: Ulid::new().to_string(),
+                aggregate_version: self.version() + 1,
+                amount: n,
+            }]),
+            _ => Err(DomainError::InvalidCommand {
+                reason: "invalid amount or insufficient".into(),
+            }),
         }
     }
 
     fn apply(&mut self, e: &Evt) {
         match e {
-            Evt::Deposited { aggregate_version, amount, .. } => { self.balance += amount; self.version = *aggregate_version; }
-            Evt::Withdrawn { aggregate_version, amount, .. } => { self.balance -= amount; self.version = *aggregate_version; }
+            Evt::Deposited {
+                aggregate_version,
+                amount,
+                ..
+            } => {
+                self.balance += amount;
+                self.version = *aggregate_version;
+            }
+            Evt::Withdrawn {
+                aggregate_version,
+                amount,
+                ..
+            } => {
+                self.balance -= amount;
+                self.version = *aggregate_version;
+            }
         }
     }
 }
@@ -180,18 +207,55 @@ use std::sync::{Arc, Mutex};
 
 // 极简内存事件仓储（演示）
 #[derive(Default, Clone)]
-struct InMemEvents { store: Arc<Mutex<HashMap<String, Vec<SerializedEvent>>>> }
+struct InMemEvents {
+    store: Arc<Mutex<HashMap<String, Vec<SerializedEvent>>>>,
+}
 
 #[async_trait]
 impl EventRepository for InMemEvents {
-    async fn get_events<A: Aggregate>(&self, id: &str) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
-        Ok(self.store.lock().unwrap().get(id).cloned().unwrap_or_default())
+    async fn get_events<A: Aggregate>(
+        &self,
+        id: &str,
+    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        Ok(
+            self
+                .store
+                .lock()
+                .unwrap()
+                .get(id)
+                .cloned()
+                .unwrap_or_default(),
+        )
     }
-    async fn get_last_events<A: Aggregate>(&self, id: &str, ver: usize) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
-        Ok(self.store.lock().unwrap().get(id).map(|xs| xs.iter().filter(|e| e.aggregate_version() > ver).cloned().collect()).unwrap_or_default())
+
+    async fn get_last_events<A: Aggregate>(
+        &self,
+        id: &str,
+        ver: usize,
+    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        Ok(
+            self
+                .store
+                .lock()
+                .unwrap()
+                .get(id)
+                .map(|xs| {
+                    xs.iter()
+                        .filter(|e| e.aggregate_version() > ver)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default(),
+        )
     }
-    async fn save(&self, events: Vec<SerializedEvent>) -> ddd_domain::error::DomainResult<()> {
-        if events.is_empty() { return Ok(()); }
+
+    async fn save(
+        &self,
+        events: Vec<SerializedEvent>,
+    ) -> ddd_domain::error::DomainResult<()> {
+        if events.is_empty() {
+            return Ok(());
+        }
         let mut m = self.store.lock().unwrap();
         let key = events[0].aggregate_id().to_string();
         m.entry(key).or_default().extend(events);
@@ -210,14 +274,21 @@ async fn main() -> anyhow::Result<()> {
 
     // 事件 + 快照策略（示意：用同一个事件仓储，快照需自行实现 SnapshotRepository）
     let snaps = Arc::new(SnapshotRepositoryWithPolicy::new(
-        DummySnapshotRepo, SnapshotPolicy::Every(10)
+        DummySnapshotRepo,
+        SnapshotPolicy::Every(10),
     ));
     let repo_ss = Arc::new(SnapshotPolicyRepo::new(events.clone(), snaps, upcasters));
     let _root_ss = AggregateRoot::<BankAccount, _>::new(repo_ss);
 
     // 执行命令
     let id = AccountId::new("acc-1".to_string());
-    root_es.execute(&id.to_string(), Command::Deposit(100), BusinessContext::default()).await?;
+    root_es
+        .execute(
+            &id.to_string(),
+            Command::Deposit(100),
+            BusinessContext::default(),
+        )
+        .await?;
     Ok(())
 }
 
@@ -225,8 +296,19 @@ async fn main() -> anyhow::Result<()> {
 struct DummySnapshotRepo;
 #[async_trait]
 impl SnapshotRepository for DummySnapshotRepo {
-    async fn get_snapshot<A: Aggregate>(&self, _id: &str, _ver: Option<usize>) -> ddd_domain::error::DomainResult<Option<ddd_domain::persist::SerializedSnapshot>> { Ok(None) }
-    async fn save<A: Aggregate>(&self, _a: &A) -> ddd_domain::error::DomainResult<()> { Ok(()) }
+    async fn get_snapshot<A: Aggregate>(
+        &self,
+        _id: &str,
+        _ver: Option<usize>,
+    ) -> ddd_domain::error::DomainResult<
+        Option<ddd_domain::persist::SerializedSnapshot>,
+    > {
+        Ok(None)
+    }
+
+    async fn save<A: Aggregate>(&self, _a: &A) -> ddd_domain::error::DomainResult<()> {
+        Ok(())
+    }
 }
 ```
 
@@ -258,8 +340,12 @@ use ddd_application::context::AppContext;
 use ddd_application::InMemoryCommandBus;
 
 #[derive(Debug)]
-struct CreateUser { name: String }
-impl Command for CreateUser { const NAME: &'static str = "CreateUser"; }
+struct CreateUser {
+    name: String,
+}
+impl Command for CreateUser {
+    const NAME: &'static str = "CreateUser";
+}
 
 struct CreateUserHandler;
 #[async_trait]
@@ -271,7 +357,9 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
 async fn main() {
     let bus = InMemoryCommandBus::new();
     bus.register::<CreateUser, _>(std::sync::Arc::new(CreateUserHandler));
-    let _ = bus.dispatch(&AppContext::default(), CreateUser { name: "Alice".into() }).await;
+    let _ = bus
+        .dispatch(&AppContext::default(), CreateUser { name: "Alice".into() })
+        .await;
 }
 ```
 
@@ -288,13 +376,21 @@ use ddd_application::InMemoryQueryBus;
 use serde::Serialize;
 
 #[derive(Debug)]
-struct GetUser { id: u32 }
+struct GetUser {
+    id: u32,
+}
 
 #[derive(Debug, Serialize)]
-struct UserDto { id: u32, name: String }
+struct UserDto {
+    id: u32,
+    name: String,
+}
 impl Dto for UserDto {}
 
-impl Query for GetUser { const NAME: &'static str = "GetUser"; type Dto = UserDto; }
+impl Query for GetUser {
+    const NAME: &'static str = "GetUser";
+    type Dto = UserDto;
+}
 
 struct GetUserHandler;
 #[async_trait]
@@ -308,7 +404,9 @@ impl QueryHandler<GetUser> for GetUserHandler {
 async fn main() {
     let bus = InMemoryQueryBus::new();
     bus.register::<GetUser, _>(std::sync::Arc::new(GetUserHandler));
-    let _ = bus.dispatch(&AppContext::default(), GetUser { id: 1 }).await;
+    let _ = bus
+        .dispatch(&AppContext::default(), GetUser { id: 1 })
+        .await;
 }
 ```
 
@@ -322,11 +420,21 @@ use ddd_domain::{aggregate::Aggregate, aggregate_root::AggregateRoot, domain_eve
 // 假设已有 BankAccount 聚合与仓储实现（见上文领域层部分）
 
 #[derive(Debug)]
-struct Deposit { id: String, amount: i64 }
-impl Command for Deposit { const NAME: &'static str = "Deposit"; }
+struct Deposit {
+    id: String,
+    amount: i64,
+}
+impl Command for Deposit {
+    const NAME: &'static str = "Deposit";
+}
 
-struct DepositHandler<R, A> { root: AggregateRoot<A, R> }
-where R: AggregateRepository<A>, A: Aggregate<Event = Evt, Error = ddd_domain::error::DomainError>;
+struct DepositHandler<R, A>
+where
+    R: AggregateRepository<A>,
+    A: Aggregate<Event = Evt, Error = ddd_domain::error::DomainError>,
+{
+    root: AggregateRoot<A, R>,
+}
 
 #[async_trait]
 impl<R, A> CommandHandler<Deposit> for DepositHandler<R, A>
