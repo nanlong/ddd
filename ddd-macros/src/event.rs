@@ -1,4 +1,5 @@
-use crate::derive_utils::{merge_derives, split_derives};
+use crate::derive_utils::apply_derives;
+use crate::field_utils::ensure_required_fields;
 use proc_macro::TokenStream;
 use quote::{ToTokens, quote};
 use std::collections::HashMap;
@@ -31,7 +32,6 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let version_lit = cfg.version.unwrap_or_else(|| syn::parse_quote! { 1 });
 
     // 合并/追加默认派生：Debug, Clone, PartialEq, Serialize, Deserialize
-    let (retained_enum_attrs, existing_enum_derives) = split_derives(&enum_item.attrs);
     let required: Vec<syn::Path> = vec![
         syn::parse_quote!(Debug),
         syn::parse_quote!(Clone),
@@ -39,10 +39,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
     ];
-    let merged_enum_derive = merge_derives(existing_enum_derives, required);
-    enum_item.attrs = std::iter::once(merged_enum_derive)
-        .chain(retained_enum_attrs)
-        .collect();
+    apply_derives(&mut enum_item.attrs, required);
 
     let mut variant_types: HashMap<String, syn::LitStr> = HashMap::new();
     let mut variant_versions: HashMap<String, syn::LitInt> = HashMap::new();
@@ -50,18 +47,12 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     for v in &mut enum_item.variants {
         match &mut v.fields {
             syn::Fields::Named(fields_named) => {
-                let mut new_named: Punctuated<syn::Field, Token![,]> = Punctuated::new();
-
-                if !has_field_named(fields_named, "id") {
-                    new_named.push(syn::parse_quote! { id: #id_type });
-                }
-                if !has_field_named(fields_named, "aggregate_version") {
-                    new_named.push(syn::parse_quote! { aggregate_version: usize });
-                }
-                for f in fields_named.named.clone().into_iter() {
-                    new_named.push(f);
-                }
-                fields_named.named = new_named;
+                let usize_ty: Type = syn::parse_quote! { usize };
+                ensure_required_fields(
+                    fields_named,
+                    &[("id", &id_type), ("aggregate_version", &usize_ty)],
+                    /*reposition_existing*/ false,
+                );
 
                 let mut retained_attrs = Vec::new();
                 let mut type_lit: Option<syn::LitStr> = None;
@@ -177,13 +168,6 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 // -------- utils & parsing --------
-
-fn has_field_named(fields: &syn::FieldsNamed, name: &str) -> bool {
-    fields
-        .named
-        .iter()
-        .any(|f| f.ident.as_ref().map(|i| i == name).unwrap_or(false))
-}
 
 struct VariantEventAttrConfig {
     ty: Option<syn::LitStr>,

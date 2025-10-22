@@ -1,4 +1,4 @@
-use crate::derive_utils::{merge_derives, split_derives};
+use crate::derive_utils::apply_derives;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -45,7 +45,6 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // 合并/规范 derive
     let mut st_out = st.clone();
-    let (retained, existing_derives) = split_derives(&st_out.attrs);
     let required: Vec<syn::Path> = vec![
         syn::parse_quote!(Default),
         syn::parse_quote!(Clone),
@@ -56,8 +55,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::parse_quote!(Eq),
         syn::parse_quote!(Hash),
     ];
-    let merged = merge_derives(existing_derives, required);
-    st_out.attrs = std::iter::once(merged).chain(retained).collect();
+    apply_derives(&mut st_out.attrs, required);
 
     let ident = &st_out.ident;
     let generics = st_out.generics.clone();

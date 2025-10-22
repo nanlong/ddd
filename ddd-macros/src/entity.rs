@@ -1,4 +1,5 @@
-use crate::derive_utils::{merge_derives, split_derives};
+use crate::derive_utils::apply_derives;
+use crate::field_utils::ensure_required_fields;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::punctuated::Punctuated;
@@ -37,55 +38,21 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let id_type = cfg.id_ty.unwrap_or_else(|| syn::parse_quote! { String });
 
     // 重新组织字段：确保 id/version 在最前，并避免重复
-    let mut new_named: Punctuated<syn::Field, Token![,]> = Punctuated::new();
-
-    let existed_id = fields_named
-        .named
-        .iter()
-        .find(|f| f.ident.as_ref().map(|i| i == "id").unwrap_or(false))
-        .cloned();
-
-    let existed_version = fields_named
-        .named
-        .iter()
-        .find(|f| f.ident.as_ref().map(|i| i == "version").unwrap_or(false))
-        .cloned();
-
-    if let Some(f) = existed_id {
-        new_named.push(f);
-    } else {
-        new_named.push(syn::parse_quote! { id: #id_type });
-    }
-
-    if let Some(f) = existed_version {
-        new_named.push(f);
-    } else {
-        new_named.push(syn::parse_quote! { version: usize });
-    }
-
-    for f in fields_named.named.clone().into_iter() {
-        let is_id_or_version = f
-            .ident
-            .as_ref()
-            .map(|i| i == "id" || i == "version")
-            .unwrap_or(false);
-        if !is_id_or_version {
-            new_named.push(f);
-        }
-    }
-
-    fields_named.named = new_named;
+    let usize_ty: Type = syn::parse_quote! { usize };
+    ensure_required_fields(
+        fields_named,
+        &[("id", &id_type), ("version", &usize_ty)],
+        /*reposition_existing*/ true,
+    );
 
     // 合并/规范 derive：默认添加 Debug, Default, Serialize, Deserialize，且允许用户在原有基础上追加
-    let (retained, existing_derives) = split_derives(&st.attrs);
     let required: Vec<syn::Path> = vec![
         syn::parse_quote!(Debug),
         syn::parse_quote!(Default),
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
     ];
-    let merged = merge_derives(existing_derives, required);
-    st.attrs = std::iter::once(merged).chain(retained).collect();
+    apply_derives(&mut st.attrs, required);
 
     let out_struct = ItemStruct { ..st };
 

@@ -52,3 +52,10 @@ pub(crate) fn derive_key(p: &syn::Path) -> String {
         p.to_token_stream().to_string()
     }
 }
+
+// 直接在 attrs 上应用默认派生合并
+pub(crate) fn apply_derives(attrs: &mut Vec<Attribute>, required: Vec<syn::Path>) {
+    let (retained, existing) = split_derives(attrs);
+    let merged = merge_derives(existing, required);
+    *attrs = std::iter::once(merged).chain(retained).collect();
+}

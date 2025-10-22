@@ -7,6 +7,7 @@ mod derive_utils;
 mod entity;
 mod entity_id;
 mod event;
+mod field_utils;
 
 /// 实体宏（原 aggregate）
 #[proc_macro_attribute]
