@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use ddd_application::InMemoryCommandBus;
-use ddd_application::command::Command;
 use ddd_application::command_bus::CommandBus;
 use ddd_application::command_handler::CommandHandler;
 use ddd_application::context::AppContext;
@@ -11,10 +10,6 @@ use std::sync::Arc;
 #[derive(Debug)]
 struct CreateUser {
     name: String,
-}
-
-impl Command for CreateUser {
-    const NAME: &'static str = "CreateUser";
 }
 
 struct CreateUserHandler;
@@ -30,10 +25,6 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
 #[derive(Debug)]
 struct DeleteUser {
     id: u32,
-}
-
-impl Command for DeleteUser {
-    const NAME: &'static str = "DeleteUser";
 }
 
 struct DeleteUserHandler;
@@ -76,10 +67,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     struct UpdateUser {
         id: u32,
         name: String,
-    }
-
-    impl Command for UpdateUser {
-        const NAME: &'static str = "UpdateUser";
     }
 
     if let Err(AppError::NotFound(name)) = bus

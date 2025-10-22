@@ -1,4 +1,4 @@
-use crate::{context::AppContext, error::AppError, query::Query};
+use crate::{context::AppContext, error::AppError};
 use async_trait::async_trait;
 
 /// 查询总线（Query Bus）
@@ -9,5 +9,8 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait QueryBus: Send + Sync {
     /// 分发查询到对应处理器，返回该查询的 DTO
-    async fn dispatch<Q: Query>(&self, ctx: &AppContext, q: Q) -> Result<Q::Dto, AppError>;
+    async fn dispatch<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<Option<R>, AppError>
+    where
+        Q: Send + Sync + 'static,
+        R: Send + Sync + 'static;
 }

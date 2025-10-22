@@ -3,7 +3,6 @@ use ddd_application::InMemoryQueryBus;
 use ddd_application::context::AppContext;
 use ddd_application::dto::Dto;
 use ddd_application::error::AppError;
-use ddd_application::query::Query;
 use ddd_application::query_bus::QueryBus;
 use ddd_application::query_handler::QueryHandler;
 use ddd_domain::domain_event::BusinessContext;
@@ -24,20 +23,15 @@ struct UserDto {
 // 由于库内未对所有 Serialize+Send+Sync 类型做 Dto 的 blanket impl，这里手动实现一次
 impl Dto for UserDto {}
 
-impl Query for GetUser {
-    const NAME: &'static str = "GetUser";
-    type Dto = UserDto;
-}
-
 struct GetUserHandler;
 
 #[async_trait]
-impl QueryHandler<GetUser> for GetUserHandler {
-    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<UserDto, AppError> {
-        Ok(UserDto {
+impl QueryHandler<GetUser, UserDto> for GetUserHandler {
+    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<Option<UserDto>, AppError> {
+        Ok(Some(UserDto {
             id: q.id,
             name: "Alice".into(),
-        })
+        }))
     }
 }
 
@@ -52,9 +46,9 @@ impl Dto for UsersDto {}
 struct ListUsersHandler;
 
 #[async_trait]
-impl QueryHandler<ListUsers> for ListUsersHandler {
-    async fn handle(&self, _ctx: &AppContext, _q: ListUsers) -> Result<UsersDto, AppError> {
-        Ok(UsersDto(vec![
+impl QueryHandler<ListUsers, UsersDto> for ListUsersHandler {
+    async fn handle(&self, _ctx: &AppContext, _q: ListUsers) -> Result<Option<UsersDto>, AppError> {
+        Ok(Some(UsersDto(vec![
             UserDto {
                 id: 1,
                 name: "Alice".into(),
@@ -63,20 +57,15 @@ impl QueryHandler<ListUsers> for ListUsersHandler {
                 id: 2,
                 name: "Bob".into(),
             },
-        ]))
+        ])))
     }
-}
-
-impl Query for ListUsers {
-    const NAME: &'static str = "ListUsers";
-    type Dto = UsersDto;
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bus = InMemoryQueryBus::new();
-    bus.register::<GetUser, _>(Arc::new(GetUserHandler));
-    bus.register::<ListUsers, _>(Arc::new(ListUsersHandler));
+    bus.register::<GetUser, UserDto, _>(Arc::new(GetUserHandler));
+    bus.register::<ListUsers, UsersDto, _>(Arc::new(ListUsersHandler));
 
     let ctx = AppContext {
         biz: BusinessContext::builder()
@@ -87,23 +76,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
         idempotency_key: None,
     };
-    let dto = bus.dispatch(&ctx, GetUser { id: 1 }).await?;
-    println!("GetUser: id={}, name={}", dto.id, dto.name);
+    let dto = bus
+        .dispatch::<GetUser, UserDto>(&ctx, GetUser { id: 1 })
+        .await?;
+    if let Some(dto) = dto {
+        println!("GetUser: id={}, name={}", dto.id, dto.name);
+    } else {
+        println!("GetUser: not found");
+    }
 
-    let list = bus.dispatch(&ctx, ListUsers).await?;
-    println!("ListUsers: count={}", list.0.len());
+    let list = bus.dispatch::<ListUsers, UsersDto>(&ctx, ListUsers).await?;
+    if let Some(list) = list {
+        println!("ListUsers: count={}", list.0.len());
+    } else {
+        println!("ListUsers: empty");
+    }
 
     // 未注册的查询 -> 返回 NotFound 错误
     #[derive(Debug)]
     struct GetOrders;
 
-    impl Query for GetOrders {
-        const NAME: &'static str = "GetOrders";
-        type Dto = UsersDto; // 仅为演示，实际应为自己的 DTO 类型
-    }
-
     if let Err(ddd_application::error::AppError::NotFound(name)) =
-        bus.dispatch(&ctx, GetOrders).await
+        bus.dispatch::<GetOrders, UsersDto>(&ctx, GetOrders).await
     {
         eprintln!("NotFound as expected for query: {}", name);
     }

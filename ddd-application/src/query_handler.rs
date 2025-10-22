@@ -1,4 +1,4 @@
-use crate::{context::AppContext, error::AppError, query::Query};
+use crate::{context::AppContext, error::AppError};
 use async_trait::async_trait;
 
 /// 查询处理器（Query Handler）
@@ -6,10 +6,7 @@ use async_trait::async_trait;
 /// - 处理具体类型的查询，返回查询的 DTO；
 /// - 建议只读，不修改领域状态，可直接访问读模型或投影。
 #[async_trait]
-pub trait QueryHandler<Q>: Send + Sync
-where
-    Q: Query,
-{
+pub trait QueryHandler<Q, R>: Send + Sync {
     /// 处理查询并返回结果 DTO
-    async fn handle(&self, ctx: &AppContext, q: Q) -> Result<Q::Dto, AppError>;
+    async fn handle(&self, ctx: &AppContext, q: Q) -> Result<Option<R>, AppError>;
 }
