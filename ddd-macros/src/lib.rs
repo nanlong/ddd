@@ -3,6 +3,7 @@
 
 use proc_macro::TokenStream;
 
+mod derive_utils;
 mod entity;
 mod entity_id;
 mod event;

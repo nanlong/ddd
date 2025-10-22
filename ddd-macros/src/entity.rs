@@ -1,3 +1,4 @@
+use crate::derive_utils::{merge_derives, split_derives};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::punctuated::Punctuated;
@@ -74,6 +75,18 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     fields_named.named = new_named;
+
+    // 合并/规范 derive：默认添加 Debug, Default, Serialize, Deserialize，且允许用户在原有基础上追加
+    let (retained, existing_derives) = split_derives(&st.attrs);
+    let required: Vec<syn::Path> = vec![
+        syn::parse_quote!(Debug),
+        syn::parse_quote!(Default),
+        syn::parse_quote!(serde::Serialize),
+        syn::parse_quote!(serde::Deserialize),
+    ];
+    let merged = merge_derives(existing_derives, required);
+    st.attrs = std::iter::once(merged).chain(retained).collect();
+
     let out_struct = ItemStruct { ..st };
 
     // 生成 Entity 实现

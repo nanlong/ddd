@@ -1,8 +1,8 @@
+use crate::derive_utils::{merge_derives, split_derives};
 use proc_macro::TokenStream;
-use quote::{ToTokens, quote};
-use syn::punctuated::Punctuated;
+use quote::quote;
 use syn::spanned::Spanned;
-use syn::{Attribute, Item, Token, parse_macro_input};
+use syn::{Item, parse_macro_input};
 
 /// #[entity_id] 宏实现
 /// 仅支持单字段 tuple struct，并为包装类型：
@@ -46,7 +46,17 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     // 合并/规范 derive
     let mut st_out = st.clone();
     let (retained, existing_derives) = split_derives(&st_out.attrs);
-    let merged = merge_derives(existing_derives);
+    let required: Vec<syn::Path> = vec![
+        syn::parse_quote!(Default),
+        syn::parse_quote!(Clone),
+        syn::parse_quote!(Debug),
+        syn::parse_quote!(serde::Serialize),
+        syn::parse_quote!(serde::Deserialize),
+        syn::parse_quote!(PartialEq),
+        syn::parse_quote!(Eq),
+        syn::parse_quote!(Hash),
+    ];
+    let merged = merge_derives(existing_derives, required);
     st_out.attrs = std::iter::once(merged).chain(retained).collect();
 
     let ident = &st_out.ident;
@@ -108,51 +118,4 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(out)
-}
-
-fn split_derives(attrs: &[Attribute]) -> (Vec<Attribute>, Vec<syn::Path>) {
-    let mut retained = Vec::new();
-    let mut existing = Vec::new();
-    for attr in attrs.iter() {
-        if attr.path().is_ident("derive") {
-            if let Ok(list) =
-                attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
-            {
-                for p in list.into_iter() {
-                    existing.push(p);
-                }
-            }
-        } else {
-            retained.push(attr.clone());
-        }
-    }
-    (retained, existing)
-}
-
-fn merge_derives(existing: Vec<syn::Path>) -> Attribute {
-    let required: Vec<syn::Path> = vec![
-        syn::parse_quote!(Default),
-        syn::parse_quote!(Clone),
-        syn::parse_quote!(Debug),
-        syn::parse_quote!(serde::Serialize),
-        syn::parse_quote!(serde::Deserialize),
-        syn::parse_quote!(PartialEq),
-        syn::parse_quote!(Eq),
-        syn::parse_quote!(Hash),
-    ];
-    let mut seen = std::collections::HashSet::<String>::new();
-    let mut final_list: Vec<syn::Path> = Vec::new();
-    let mut push_unique = |p: syn::Path| {
-        let key = p.to_token_stream().to_string();
-        if seen.insert(key) {
-            final_list.push(p);
-        }
-    };
-    for p in required {
-        push_unique(p);
-    }
-    for p in existing {
-        push_unique(p);
-    }
-    syn::parse_quote!(#[derive(#(#final_list),*)])
 }
