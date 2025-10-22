@@ -6,7 +6,7 @@
 
 ## 默认派生一览
 
-- `#[entity]` 默认追加 `#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]`
+- `#[entity]` 默认追加 `#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]`（可用 `debug = false` 关闭）
 - `#[entity_id]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`
 - `#[event]` 默认追加 `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`
 
@@ -24,7 +24,9 @@
 语法：
 
 ```rust
-#[entity(id = IdType)] // 可选，默认 String
+#[entity(id = IdType)]   // 可选，默认 String
+#[entity(debug = false)] // 可选，禁止自动派生 Debug（用户可手写自定义 Debug）
+#[entity(debug = true)]  // 可选，显式开启自动派生 Debug（默认即开启）
 struct Foo {
     // ...
 }

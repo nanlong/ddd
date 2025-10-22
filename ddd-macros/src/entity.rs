@@ -11,7 +11,9 @@ use syn::{
 /// #[entity] 宏实现
 /// - 若缺失则追加字段：`id: IdType`, `version: usize`，并置于字段最前
 /// - 自动实现 `::ddd_domain::entity::Entity`（new/id/version）
-/// - 支持参数：`#[entity(id = IdType)]`，默认 `String`
+/// - 支持参数：`#[entity(id = IdType, debug = true|false)]`；
+///   - `id` 默认 `String`
+///   - `debug` 默认 `true`（派生 Debug）。当为 `false` 时不派生 Debug，便于用户自定义实现。
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cfg = parse_macro_input!(attr as EntityAttrConfig);
     let input = parse_macro_input!(item as Item);
@@ -45,13 +47,15 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         /*reposition_existing*/ true,
     );
 
-    // 合并/规范 derive：默认添加 Debug, Default, Serialize, Deserialize，且允许用户在原有基础上追加
-    let required: Vec<syn::Path> = vec![
-        syn::parse_quote!(Debug),
+    // 合并/规范 derive：默认添加 Debug（可通过 debug=false 关闭）、Default、Serialize、Deserialize
+    let mut required: Vec<syn::Path> = vec![
         syn::parse_quote!(Default),
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
     ];
+    if cfg.derive_debug.unwrap_or(true) {
+        required.insert(0, syn::parse_quote!(Debug));
+    }
     apply_derives(&mut st.attrs, required);
 
     let out_struct = ItemStruct { ..st };
@@ -84,56 +88,72 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 struct EntityAttrConfig {
     id_ty: Option<Type>,
+    derive_debug: Option<bool>,
 }
 
 impl Parse for EntityAttrConfig {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut id_ty: Option<Type> = None;
+        let mut derive_debug: Option<bool> = None;
 
         if input.is_empty() {
-            return Ok(Self { id_ty });
+            return Ok(Self { id_ty, derive_debug });
         }
 
-        let pairs: Punctuated<KvType, Token![,]> =
-            Punctuated::<KvType, Token![,]>::parse_terminated(input)?;
+        let elems: Punctuated<EntityAttrElem, Token![,]> =
+            Punctuated::<EntityAttrElem, Token![,]>::parse_terminated(input)?;
 
-        for kv in pairs.into_iter() {
-            match kv.key.to_string().as_str() {
-                "id" => {
+        for elem in elems.into_iter() {
+            match elem {
+                EntityAttrElem::Id(ty) => {
                     if id_ty.is_some() {
                         return Err(syn::Error::new(
-                            kv.key.span(),
+                            ty.span(),
                             "duplicate key 'id' in attribute",
                         ));
                     }
-                    id_ty = Some(kv.ty);
+                    id_ty = Some(ty);
                 }
-                _ => {
-                    return Err(syn::Error::new(
-                        kv.key.span(),
-                        "unknown key in attribute; expected 'id'",
-                    ));
+                EntityAttrElem::Debug(b) => {
+                    if derive_debug.is_some() {
+                        return Err(syn::Error::new(
+                            proc_macro2::Span::call_site(),
+                            "duplicate key 'debug' in attribute",
+                        ));
+                    }
+                    derive_debug = Some(b);
                 }
             }
         }
 
-        Ok(Self { id_ty })
+        Ok(Self { id_ty, derive_debug })
     }
 }
 
-struct KvType {
-    key: syn::Ident,
-    #[allow(dead_code)]
-    eq: Token![=],
-    ty: Type,
+enum EntityAttrElem {
+    Id(Type),
+    Debug(bool),
 }
 
-impl Parse for KvType {
+impl Parse for EntityAttrElem {
     fn parse(input: ParseStream) -> Result<Self> {
-        Ok(Self {
-            key: input.parse()?,
-            eq: input.parse()?,
-            ty: input.parse()?,
-        })
+        let key: syn::Ident = input.parse()?;
+        if key == "id" {
+            let _eq: Token![=] = input.parse()?;
+            let ty: Type = input.parse()?;
+            Ok(EntityAttrElem::Id(ty))
+        } else if key == "debug" {
+            let _eq: Token![=] = input.parse()?;
+            let expr: syn::Expr = input.parse()?;
+            match expr {
+                syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Bool(b), .. }) => Ok(EntityAttrElem::Debug(b.value())),
+                other => Err(syn::Error::new(other.span(), "expected boolean literal for 'debug'")),
+            }
+        } else {
+            Err(syn::Error::new(
+                key.span(),
+                "unknown key in attribute; expected 'id' or 'debug'",
+            ))
+        }
     }
 }
