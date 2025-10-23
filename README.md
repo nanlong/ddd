@@ -4,7 +4,7 @@
 
 - `ddd-macros`：过程宏，生成实体/实体ID/领域事件样板（减少重复，统一约定）。
 - `ddd-domain`：领域层，聚合/事件/上抬链/仓储与事件引擎等抽象与通用实现。
-- `ddd-application`：应用层，命令/查询、处理器与总线（内存实现），DTO 与上下文。
+- `ddd-application`：应用层，命令/查询、处理器与总线（内存实现）与上下文。
 
 ## 目录结构
 
@@ -318,14 +318,13 @@ impl SnapshotRepository for DummySnapshotRepo {
 
 ## 3) 应用层：`ddd-application`
 
-职责：编排用例与对外接口（API/CLI/Job），与领域层解耦，返回 DTO。
+职责：编排用例与对外接口（API/CLI/Job），与领域层解耦，返回结果对象（可序列化）。
 
 核心组件：
 
 - 命令/查询：可使用任意 `Send + Sync + 'static` 的自定义类型，不再要求实现 `Command`/`Query` trait；路由按类型 `TypeId` 完成。
 - `CommandHandler<C>`/`QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `Option<R>`。
 - `CommandBus`/`QueryBus`：按类型分发；提供内存实现 `InMemoryCommandBus`/`InMemoryQueryBus`。
-- `Dto`：输出对象抽象（序列化友好）。
 - `AppContext`：横切上下文（`BusinessContext`、幂等键）。
 - `AppError`：统一错误（含 `Domain`、`NotFound`、`TypeMismatch` 等）。
 
@@ -363,7 +362,6 @@ async fn main() {
 ```rust
 use async_trait::async_trait;
 use ddd_application::context::AppContext;
-use ddd_application::dto::Dto;
 use ddd_application::query_bus::QueryBus;
 use ddd_application::query_handler::QueryHandler;
 use ddd_application::InMemoryQueryBus;
@@ -379,7 +377,6 @@ struct UserDto {
     id: u32,
     name: String,
 }
-impl Dto for UserDto {}
 
 struct GetUserHandler;
 #[async_trait]

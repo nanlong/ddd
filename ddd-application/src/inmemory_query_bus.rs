@@ -72,7 +72,7 @@ impl InMemoryQueryBus {
 
 #[async_trait]
 impl QueryBus for InMemoryQueryBus {
-    async fn dispatch<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<Option<R>, AppError>
+    async fn dispatch<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<R, AppError>
     where
         Q: Send + Sync + 'static,
         R: Send + Sync + 'static,
@@ -82,7 +82,7 @@ impl QueryBus for InMemoryQueryBus {
 }
 
 impl InMemoryQueryBus {
-    async fn dispatch_impl<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<Option<R>, AppError>
+    async fn dispatch_impl<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<R, AppError>
     where
         Q: Send + Sync + 'static,
         R: Send + Sync + 'static,
@@ -93,10 +93,10 @@ impl InMemoryQueryBus {
 
         let out = (f)(Box::new(q), ctx).await?;
 
-        match out.downcast::<Option<R>>() {
+        match out.downcast::<R>() {
             Ok(dto_opt) => Ok(*dto_opt),
             Err(_) => Err(AppError::TypeMismatch {
-                expected: type_name::<Option<R>>(),
+                expected: type_name::<R>(),
                 found: "unknown",
             }),
         }
@@ -106,7 +106,6 @@ impl InMemoryQueryBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::Dto;
     use crate::error::AppError;
     use crate::query_handler::QueryHandler;
     use serde::Serialize;
@@ -115,18 +114,19 @@ mod tests {
 
     #[derive(Debug)]
     struct Get;
+
     #[derive(Debug, Serialize)]
     struct NumDto(pub usize);
-    impl Dto for NumDto {}
 
     struct GetHandler {
         counter: Arc<AtomicUsize>,
     }
+
     #[async_trait]
     impl QueryHandler<Get, NumDto> for GetHandler {
-        async fn handle(&self, _ctx: &AppContext, _q: Get) -> Result<Option<NumDto>, AppError> {
+        async fn handle(&self, _ctx: &AppContext, _q: Get) -> Result<NumDto, AppError> {
             let v = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
-            Ok(Some(NumDto(v)))
+            Ok(NumDto(v))
         }
     }
 
@@ -139,11 +139,7 @@ mod tests {
         }));
 
         let ctx = AppContext::default();
-        let NumDto(n) = bus
-            .dispatch::<Get, NumDto>(&ctx, Get)
-            .await
-            .unwrap()
-            .unwrap();
+        let NumDto(n) = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap();
         assert_eq!(n, 1);
     }
 
@@ -160,7 +156,6 @@ mod tests {
 
     #[derive(Debug, Serialize)]
     struct WrongDto;
-    impl Dto for WrongDto {}
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn type_mismatch_error_when_result_downcast_fails() {
@@ -192,15 +187,11 @@ mod tests {
         for _ in 0..100 {
             let bus = bus.clone();
             let ctx = ctx.clone();
-            set.spawn(async move {
-                bus.dispatch::<Get, NumDto>(&ctx, Get)
-                    .await
-                    .map(|opt| opt.map(|NumDto(n)| n).unwrap())
-            });
+            set.spawn(async move { bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap() });
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
-            results.push(res.unwrap().unwrap());
+            results.push(res.unwrap().0);
         }
         results.sort_unstable();
         assert_eq!(results.len(), 100);

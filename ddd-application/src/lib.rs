@@ -1,7 +1,6 @@
 pub mod command_bus;
 pub mod command_handler;
 pub mod context;
-pub mod dto;
 pub mod error;
 pub mod inmemory_command_bus;
 pub mod inmemory_query_bus;

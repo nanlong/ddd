@@ -1,11 +1,10 @@
 # ddd-application
 
-应用层（Application Layer）：编排用例、承接接口请求、返回 DTO，不直接承载复杂领域规则。
+应用层（Application Layer）：编排用例、承接接口请求，返回结果对象，不直接承载复杂领域规则。
 
 ## 核心组件
 
 - 命令/查询：任意 `Send + Sync + 'static` 的类型即可，不再需要实现 `Command`/`Query` trait；路由依据 `TypeId`。
-- `Dto`：面向接口序列化友好、与领域模型解耦。当前未提供 blanket impl，请为自定义 DTO 手动实现 `Dto`。
 - `AppContext`：横切上下文：`BusinessContext`（correlation/causation/actor_*）与 `idempotency_key`。
 - `CommandHandler<C>` / `QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `Option<R>`。
 - `CommandBus` / `QueryBus`：按类型分发；当前提供内存实现：`InMemoryCommandBus`、`InMemoryQueryBus`。
@@ -60,7 +59,6 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
 ```rust
  use async_trait::async_trait;
  use ddd_application::context::AppContext;
- use ddd_application::dto::Dto;
  use ddd_application::query_bus::QueryBus;
  use ddd_application::query_handler::QueryHandler;
  use ddd_application::InMemoryQueryBus;
@@ -77,7 +75,6 @@ struct UserDto {
     name: String,
 }
 
- impl Dto for UserDto {}
 
  struct GetUserHandler;
 
