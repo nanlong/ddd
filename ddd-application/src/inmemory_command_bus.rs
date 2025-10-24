@@ -1,10 +1,9 @@
 use crate::{
-    command::Command, command_bus::CommandBus, command_handler::CommandHandler,
-    context::AppContext, error::AppError,
+    command_bus::CommandBus, command_handler::CommandHandler, context::AppContext, error::AppError,
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::any::{Any, TypeId};
+use std::any::{Any, TypeId, type_name};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -37,7 +36,7 @@ impl InMemoryCommandBus {
     /// 注册命令处理器
     pub fn register<C, H>(&self, handler: Arc<H>)
     where
-        C: Command + Send + Sync + 'static,
+        C: Send + Sync + 'static,
         H: CommandHandler<C> + Send + Sync + 'static,
     {
         let key = TypeId::of::<C>();
@@ -53,7 +52,7 @@ impl InMemoryCommandBus {
                     match boxed_cmd.downcast::<C>() {
                         Ok(cmd) => handler.handle(ctx, *cmd).await,
                         Err(_) => Err(AppError::TypeMismatch {
-                            expected: C::NAME,
+                            expected: type_name::<C>(),
                             found: "unknown",
                         }),
                     }
@@ -67,9 +66,21 @@ impl InMemoryCommandBus {
 
 #[async_trait]
 impl CommandBus for InMemoryCommandBus {
-    async fn dispatch<C: Command>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError> {
+    async fn dispatch<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
+    where
+        C: Send + Sync + 'static,
+    {
+        self.dispatch_impl(ctx, cmd).await
+    }
+}
+
+impl InMemoryCommandBus {
+    async fn dispatch_impl<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
+    where
+        C: Send + Sync + 'static,
+    {
         let Some(f) = self.handlers.get(&TypeId::of::<C>()).map(|h| h.clone()) else {
-            return Err(AppError::NotFound(C::NAME));
+            return Err(AppError::NotFound(type_name::<C>()));
         };
 
         (f)(Box::new(cmd), ctx).await
@@ -79,7 +90,6 @@ impl CommandBus for InMemoryCommandBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::Command;
     use crate::command_handler::CommandHandler;
     use crate::error::AppError;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -87,9 +97,6 @@ mod tests {
 
     #[derive(Debug)]
     struct Add;
-    impl Command for Add {
-        const NAME: &'static str = "Add";
-    }
 
     struct AddHandler {
         counter: Arc<AtomicUsize>,
@@ -121,16 +128,13 @@ mod tests {
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
         match err {
-            AppError::NotFound(name) => assert_eq!(name, Add::NAME),
+            AppError::NotFound(name) => assert!(name.contains("Add")),
             other => panic!("unexpected error: {other:?}"),
         }
     }
 
     #[derive(Debug)]
     struct Wrong;
-    impl Command for Wrong {
-        const NAME: &'static str = "Wrong";
-    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn type_mismatch_error_when_corrupted_entry() {
@@ -141,7 +145,7 @@ mod tests {
                 let _ = boxed_cmd
                     .downcast::<Wrong>()
                     .map_err(|_| AppError::TypeMismatch {
-                        expected: Wrong::NAME,
+                        expected: type_name::<Wrong>(),
                         found: "unknown",
                     })?;
                 Ok(())
@@ -152,7 +156,7 @@ mod tests {
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
         match err {
-            AppError::TypeMismatch { expected, .. } => assert_eq!(expected, Wrong::NAME),
+            AppError::TypeMismatch { expected, .. } => assert!(expected.contains("Wrong")),
             other => panic!("unexpected error: {other:?}"),
         }
     }

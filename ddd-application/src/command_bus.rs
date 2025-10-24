@@ -1,4 +1,4 @@
-use crate::{command::Command, context::AppContext, error::AppError};
+use crate::{context::AppContext, error::AppError};
 use async_trait::async_trait;
 
 /// 命令总线（Command Bus）
@@ -12,5 +12,7 @@ pub trait CommandBus: Send + Sync {
     ///
     /// - `ctx`：应用上下文（链路追踪、幂等键等）
     /// - `cmd`：具体命令实例
-    async fn dispatch<C: Command>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>;
+    async fn dispatch<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
+    where
+        C: Send + Sync + 'static;
 }
