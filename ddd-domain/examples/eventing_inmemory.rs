@@ -5,52 +5,14 @@ use chrono::Utc;
 use ddd_domain::domain_event::BusinessContext;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::eventing::{
-    EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
-    HandledEventType,
+    EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer, HandledEventType,
+    InMemoryEventBus,
 };
 use ddd_domain::persist::SerializedEvent;
-use futures_core::stream::BoxStream;
-use futures_util::StreamExt;
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
-
-// ============================================================================
-// 内存总线实现（EventBus）
-// ============================================================================
-
-#[derive(Clone)]
-struct InMemoryBus {
-    tx: broadcast::Sender<SerializedEvent>,
-}
-
-impl InMemoryBus {
-    fn new(capacity: usize) -> Self {
-        let (tx, _rx) = broadcast::channel(capacity);
-        Self { tx }
-    }
-}
-
-#[async_trait::async_trait]
-impl EventBus for InMemoryBus {
-    async fn publish(&self, event: &SerializedEvent) -> DomainResult<()> {
-        let _ = self.tx.send(event.clone());
-        Ok(())
-    }
-
-    async fn subscribe(&self) -> BoxStream<'static, DomainResult<SerializedEvent>> {
-        let rx = self.tx.subscribe();
-        let stream = BroadcastStream::new(rx).map(|r| {
-            r.map_err(|e| DomainError::EventBus {
-                reason: e.to_string(),
-            })
-        });
-        Box::pin(stream)
-    }
-}
 
 // ============================================================================
 // 内存 Outbox（EventDeliverer）
@@ -222,7 +184,7 @@ fn mk_event(id: &str, ty: &str) -> SerializedEvent {
 async fn main() -> AnyResult<()> {
     println!("=== Eventing 引擎（内存版）示例 ===\n");
     // Bus
-    let bus = Arc::new(InMemoryBus::new(1024));
+    let bus = Arc::new(InMemoryEventBus::new(1024));
 
     // Outbox & Deliverer
     let outbox = InMemoryOutbox::default();

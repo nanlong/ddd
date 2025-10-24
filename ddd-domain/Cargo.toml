@@ -14,6 +14,7 @@ futures-core = { version = "0.3", features = ["alloc"] }
 futures-util = { version = "0.3" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7" }
+tokio-stream = { version = "0.1", features = ["sync"] }
 thiserror = { version = "2.0" }
 uuid = { version = "1.11", features = ["serde"] }
 sqlx = { version = "0.8", features = [
@@ -26,7 +27,6 @@ sqlx = { version = "0.8", features = [
 [dev-dependencies]
 ddd-macros = { path = "../ddd-macros" }
 ulid = { version = "1.2", features = ["serde"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
 anyhow = { version = "1.0" }
 
 [[example]]

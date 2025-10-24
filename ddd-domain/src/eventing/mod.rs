@@ -10,12 +10,14 @@
 //! 该模块仅定义协议与引擎，不绑定具体传输实现，可对接任意消息系统或内存实现。
 //!
 pub mod bus;
+pub mod bus_inmemory;
 pub mod deliverer;
 pub mod engine;
 pub mod handler;
 pub mod reclaimer;
 
 pub use bus::EventBus;
+pub use bus_inmemory::InMemoryEventBus;
 pub use deliverer::EventDeliverer;
 pub use engine::{EngineHandle, EventEngine, EventEngineConfig};
 pub use handler::{EventHandler, HandledEventType};
