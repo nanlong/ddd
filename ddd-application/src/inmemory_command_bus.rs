@@ -3,7 +3,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::any::{Any, TypeId, type_name};
+use std::any::{Any, TypeId, type_name, type_name_of_val};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ type CmdHandlerFn =
 /// - 通过 TypeId 注册不同 Command 对应的 Handler
 /// - 运行时以类型擦除（Any）方式进行调度
 pub struct InMemoryCommandBus {
-    handlers: DashMap<TypeId, CmdHandlerFn>,
+    handlers: DashMap<TypeId, (&'static str, CmdHandlerFn)>,
 }
 
 impl Default for InMemoryCommandBus {
@@ -34,9 +34,9 @@ impl InMemoryCommandBus {
     }
 
     /// 注册命令处理器
-    pub fn register<C, H>(&self, handler: Arc<H>)
+    pub fn register<C, H>(&self, handler: Arc<H>) -> Result<(), AppError>
     where
-        C: Send + Sync + 'static,
+        C: Send + 'static,
         H: CommandHandler<C> + Send + Sync + 'static,
     {
         let key = TypeId::of::<C>();
@@ -51,16 +51,26 @@ impl InMemoryCommandBus {
                     // 正常情况下这里的 downcast 永远不会失败（键与闭包同一泛型 C）
                     match boxed_cmd.downcast::<C>() {
                         Ok(cmd) => handler.handle(ctx, *cmd).await,
-                        Err(_) => Err(AppError::TypeMismatch {
-                            expected: type_name::<C>(),
-                            found: "unknown",
-                        }),
+                        Err(e) => {
+                            let found = type_name_of_val(&e);
+
+                            Err(AppError::TypeMismatch {
+                                expected: type_name::<C>(),
+                                found,
+                            })
+                        }
                     }
                 })
             })
         };
 
-        self.handlers.insert(key, f);
+        if self.handlers.contains_key(&key) {
+            return Err(AppError::AlreadyRegistered(type_name::<C>()));
+        }
+
+        self.handlers.insert(key, (type_name::<C>(), f));
+
+        Ok(())
     }
 }
 
@@ -68,7 +78,7 @@ impl InMemoryCommandBus {
 impl CommandBus for InMemoryCommandBus {
     async fn dispatch<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
     where
-        C: Send + Sync + 'static,
+        C: Send + 'static,
     {
         self.dispatch_impl(ctx, cmd).await
     }
@@ -77,13 +87,20 @@ impl CommandBus for InMemoryCommandBus {
 impl InMemoryCommandBus {
     async fn dispatch_impl<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
     where
-        C: Send + Sync + 'static,
+        C: Send + 'static,
     {
-        let Some(f) = self.handlers.get(&TypeId::of::<C>()).map(|h| h.clone()) else {
-            return Err(AppError::NotFound(type_name::<C>()));
+        let Some((_name, f)) = self.handlers.get(&TypeId::of::<C>()).map(|h| h.clone()) else {
+            return Err(AppError::HandlerNotFound(type_name::<C>()));
         };
 
         (f)(Box::new(cmd), ctx).await
+    }
+}
+
+impl InMemoryCommandBus {
+    /// 获取已注册的命令类型名列表（只读视图）
+    pub fn registered_commands(&self) -> Vec<&'static str> {
+        self.handlers.iter().map(|e| e.value().0).collect()
     }
 }
 
@@ -115,7 +132,8 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         bus.register::<Add, _>(Arc::new(AddHandler {
             counter: counter.clone(),
-        }));
+        }))
+        .unwrap();
 
         let ctx = AppContext::default();
         bus.dispatch(&ctx, Add).await.unwrap();
@@ -128,7 +146,7 @@ mod tests {
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
         match err {
-            AppError::NotFound(name) => assert!(name.contains("Add")),
+            AppError::HandlerNotFound(name) => assert!(name.contains("Add")),
             other => panic!("unexpected error: {other:?}"),
         }
     }
@@ -142,16 +160,18 @@ mod tests {
         // 手动插入一个错误的条目：键是 Add，但闭包尝试将命令 downcast 为 Wrong
         let f: CmdHandlerFn = Arc::new(|boxed_cmd, _ctx| {
             Box::pin(async move {
+                let found = type_name_of_val(&boxed_cmd);
                 let _ = boxed_cmd
                     .downcast::<Wrong>()
                     .map_err(|_| AppError::TypeMismatch {
                         expected: type_name::<Wrong>(),
-                        found: "unknown",
+                        found,
                     })?;
                 Ok(())
             })
         });
-        bus.handlers.insert(TypeId::of::<Add>(), f);
+        bus.handlers
+            .insert(TypeId::of::<Add>(), (type_name::<Add>(), f));
 
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
@@ -167,7 +187,8 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         bus.register::<Add, _>(Arc::new(AddHandler {
             counter: counter.clone(),
-        }));
+        }))
+        .unwrap();
 
         let mut set = JoinSet::new();
         let ctx = AppContext::default();

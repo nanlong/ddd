@@ -58,8 +58,8 @@ impl QueryHandler<ListUsers, UsersDto> for ListUsersHandler {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bus = InMemoryQueryBus::new();
-    bus.register::<GetUser, UserDto, _>(Arc::new(GetUserHandler));
-    bus.register::<ListUsers, UsersDto, _>(Arc::new(ListUsersHandler));
+    bus.register::<GetUser, UserDto, _>(Arc::new(GetUserHandler))?;
+    bus.register::<ListUsers, UsersDto, _>(Arc::new(ListUsersHandler))?;
 
     let ctx = AppContext {
         biz: BusinessContext::builder()
@@ -80,14 +80,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("ListUsers: count={}", list.0.len());
 
-    // 未注册的查询 -> 返回 NotFound 错误
+    // 未注册的查询 -> 返回 HandlerNotFound 错误
     #[derive(Debug)]
     struct GetOrders;
 
-    if let Err(ddd_application::error::AppError::NotFound(name)) =
+    if let Err(ddd_application::error::AppError::HandlerNotFound(name)) =
         bus.dispatch::<GetOrders, UsersDto>(&ctx, GetOrders).await
     {
-        eprintln!("NotFound as expected for query: {}", name);
+        eprintln!("HandlerNotFound as expected for query: {}", name);
     }
+
+    eprintln!("Registered Queries: {:?}", bus.registered_queries());
     Ok(())
 }

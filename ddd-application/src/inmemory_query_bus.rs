@@ -3,7 +3,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::any::{Any, TypeId, type_name};
+use std::any::{Any, TypeId, type_name, type_name_of_val};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ type QueryHandlerFn =
 /// - 通过 TypeId 注册不同 Query 对应的 Handler
 /// - 以类型擦除方式调度，并在调用端进行结果还原
 pub struct InMemoryQueryBus {
-    handlers: DashMap<TypeId, QueryHandlerFn>,
+    handlers: DashMap<TypeId, (&'static str, QueryHandlerFn)>,
 }
 
 impl Default for InMemoryQueryBus {
@@ -37,10 +37,10 @@ impl InMemoryQueryBus {
     }
 
     /// 注册查询处理器
-    pub fn register<Q, R, H>(&self, handler: Arc<H>)
+    pub fn register<Q, R, H>(&self, handler: Arc<H>) -> Result<(), AppError>
     where
-        Q: Send + Sync + 'static,
-        R: Send + Sync + 'static,
+        Q: Send + 'static,
+        R: Send + 'static,
         H: QueryHandler<Q, R> + Send + Sync + 'static,
     {
         let key = TypeId::of::<Q>();
@@ -57,16 +57,22 @@ impl InMemoryQueryBus {
                             let dto_opt = handler.handle(ctx, *q).await?;
                             Ok(Box::new(dto_opt) as BoxAnySend)
                         }
-                        Err(_) => Err(AppError::TypeMismatch {
+                        Err(e) => Err(AppError::TypeMismatch {
                             expected: type_name::<Q>(),
-                            found: "unknown",
+                            found: type_name_of_val(&e),
                         }),
                     }
                 })
             })
         };
 
-        self.handlers.insert(key, f);
+        if self.handlers.contains_key(&key) {
+            return Err(AppError::AlreadyRegistered(type_name::<Q>()));
+        }
+
+        self.handlers.insert(key, (type_name::<Q>(), f));
+
+        Ok(())
     }
 }
 
@@ -74,8 +80,8 @@ impl InMemoryQueryBus {
 impl QueryBus for InMemoryQueryBus {
     async fn dispatch<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<R, AppError>
     where
-        Q: Send + Sync + 'static,
-        R: Send + Sync + 'static,
+        Q: Send + 'static,
+        R: Send + 'static,
     {
         self.dispatch_impl::<Q, R>(ctx, q).await
     }
@@ -84,22 +90,29 @@ impl QueryBus for InMemoryQueryBus {
 impl InMemoryQueryBus {
     async fn dispatch_impl<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<R, AppError>
     where
-        Q: Send + Sync + 'static,
-        R: Send + Sync + 'static,
+        Q: Send + 'static,
+        R: Send + 'static,
     {
-        let Some(f) = self.handlers.get(&TypeId::of::<Q>()).map(|h| h.clone()) else {
-            return Err(AppError::NotFound(type_name::<Q>()));
+        let Some((_name, f)) = self.handlers.get(&TypeId::of::<Q>()).map(|h| h.clone()) else {
+            return Err(AppError::HandlerNotFound(type_name::<Q>()));
         };
 
         let out = (f)(Box::new(q), ctx).await?;
 
         match out.downcast::<R>() {
             Ok(dto_opt) => Ok(*dto_opt),
-            Err(_) => Err(AppError::TypeMismatch {
+            Err(e) => Err(AppError::TypeMismatch {
                 expected: type_name::<R>(),
-                found: "unknown",
+                found: type_name_of_val(&e),
             }),
         }
+    }
+}
+
+impl InMemoryQueryBus {
+    /// 获取已注册的查询类型名列表（只读视图）
+    pub fn registered_queries(&self) -> Vec<&'static str> {
+        self.handlers.iter().map(|e| e.value().0).collect()
     }
 }
 
@@ -136,7 +149,8 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         bus.register::<Get, NumDto, _>(Arc::new(GetHandler {
             counter: counter.clone(),
-        }));
+        }))
+        .unwrap();
 
         let ctx = AppContext::default();
         let NumDto(n) = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap();
@@ -149,7 +163,7 @@ mod tests {
         let ctx = AppContext::default();
         let err = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap_err();
         match err {
-            AppError::NotFound(name) => assert!(name.contains("Get")),
+            AppError::HandlerNotFound(name) => assert!(name.contains("Get")),
             other => panic!("unexpected error: {other:?}"),
         }
     }
@@ -164,7 +178,8 @@ mod tests {
         let f: QueryHandlerFn = Arc::new(|_boxed_q, _ctx| {
             Box::pin(async move { Ok(Box::new(WrongDto) as BoxAnySend) })
         });
-        bus.handlers.insert(TypeId::of::<Get>(), f);
+        bus.handlers
+            .insert(TypeId::of::<Get>(), (type_name::<Get>(), f));
 
         let ctx = AppContext::default();
         let err = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap_err();
@@ -180,7 +195,8 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         bus.register::<Get, NumDto, _>(Arc::new(GetHandler {
             counter: counter.clone(),
-        }));
+        }))
+        .unwrap();
 
         let mut set = JoinSet::new();
         let ctx = AppContext::default();

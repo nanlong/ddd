@@ -15,7 +15,10 @@ pub enum AppError {
     Infra(String),
 
     #[error("handler not found: {0}")]
-    NotFound(&'static str),
+    HandlerNotFound(&'static str),
+
+    #[error("handler already registered: {0}")]
+    AlreadyRegistered(&'static str),
 
     #[error("type mismatch: expected={expected}, found={found}")]
     TypeMismatch {

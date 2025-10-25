@@ -14,5 +14,5 @@ pub trait CommandBus: Send + Sync {
     /// - `cmd`：具体命令实例
     async fn dispatch<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
     where
-        C: Send + Sync + 'static;
+        C: Send + 'static;
 }

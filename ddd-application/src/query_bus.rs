@@ -11,6 +11,6 @@ pub trait QueryBus: Send + Sync {
     /// 分发查询到对应处理器，返回该查询的结果
     async fn dispatch<Q, R>(&self, ctx: &AppContext, q: Q) -> Result<R, AppError>
     where
-        Q: Send + Sync + 'static,
-        R: Send + Sync + 'static;
+        Q: Send + 'static,
+        R: Send + 'static;
 }

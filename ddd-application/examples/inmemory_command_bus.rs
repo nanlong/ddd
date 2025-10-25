@@ -40,8 +40,8 @@ impl CommandHandler<DeleteUser> for DeleteUserHandler {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bus = InMemoryCommandBus::new();
-    bus.register::<CreateUser, _>(Arc::new(CreateUserHandler));
-    bus.register::<DeleteUser, _>(Arc::new(DeleteUserHandler));
+    bus.register::<CreateUser, _>(Arc::new(CreateUserHandler))?;
+    bus.register::<DeleteUser, _>(Arc::new(DeleteUserHandler))?;
 
     let ctx = AppContext {
         biz: BusinessContext::builder()
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     bus.dispatch(&ctx, DeleteUser { id: 42 }).await?;
 
-    // 未注册的命令 -> 返回 NotFound 错误
+    // 未注册的命令 -> 返回 HandlerNotFound 错误
     #[allow(dead_code)]
     #[derive(Debug)]
     struct UpdateUser {
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name: String,
     }
 
-    if let Err(AppError::NotFound(name)) = bus
+    if let Err(AppError::HandlerNotFound(name)) = bus
         .dispatch(
             &ctx,
             UpdateUser {
@@ -79,7 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await
     {
-        eprintln!("NotFound as expected for command: {}", name);
+        eprintln!("HandlerNotFound as expected for command: {}", name);
     }
+
+    eprintln!("Registered Commands: {:?}", bus.registered_commands());
     Ok(())
 }
