@@ -297,7 +297,7 @@ async fn main() -> AnyResult<()> {
     let events = root
         .execute(
             &account_id,
-            BankAccountCommand::Deposit { amount: 1000 },
+            vec![BankAccountCommand::Deposit { amount: 1000 }],
             BusinessContext::default(),
         )
         .await?;
@@ -307,7 +307,7 @@ async fn main() -> AnyResult<()> {
     let events = root
         .execute(
             &account_id,
-            BankAccountCommand::Withdraw { amount: 300 },
+            vec![BankAccountCommand::Withdraw { amount: 300 }],
             BusinessContext::default(),
         )
         .await?;
@@ -317,7 +317,7 @@ async fn main() -> AnyResult<()> {
     let events = root
         .execute(
             &account_id,
-            BankAccountCommand::Lock,
+            vec![BankAccountCommand::Lock],
             BusinessContext::default(),
         )
         .await?;
@@ -327,7 +327,7 @@ async fn main() -> AnyResult<()> {
     let events = root
         .execute(
             &account_id,
-            BankAccountCommand::Unlock,
+            vec![BankAccountCommand::Unlock],
             BusinessContext::default(),
         )
         .await?;

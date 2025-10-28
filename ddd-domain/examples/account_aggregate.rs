@@ -257,9 +257,9 @@ async fn main() {
     let events = root
         .execute(
             &id,
-            AccountCommand::Open {
+            vec![AccountCommand::Open {
                 initial_balance: 1000,
-            },
+            }],
             BusinessContext::default(),
         )
         .await
@@ -271,7 +271,7 @@ async fn main() {
     let events = root
         .execute(
             &id,
-            AccountCommand::Deposit { amount: 500 },
+            vec![AccountCommand::Deposit { amount: 500 }],
             BusinessContext::default(),
         )
         .await
@@ -283,7 +283,7 @@ async fn main() {
     let events = root
         .execute(
             &id,
-            AccountCommand::Withdraw { amount: 200 },
+            vec![AccountCommand::Withdraw { amount: 200 }],
             BusinessContext::default(),
         )
         .await

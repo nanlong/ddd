@@ -161,13 +161,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     // 执行命令 -> 事件 -> 持久化
     root.execute(
         &id,
-        Cmd::Deposit { amount: 1000 },
-        BusinessContext::default(),
-    )
-    .await?;
-    root.execute(
-        &id,
-        Cmd::Withdraw { amount: 300 },
+        vec![Cmd::Deposit { amount: 1000 }, Cmd::Withdraw { amount: 300 }],
         BusinessContext::default(),
     )
     .await?;

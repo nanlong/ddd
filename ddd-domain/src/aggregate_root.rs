@@ -6,7 +6,6 @@
 use crate::{
     aggregate::Aggregate,
     domain_event::{BusinessContext, EventEnvelope},
-    entity::Entity,
     persist::AggregateRepository,
 };
 use std::marker::PhantomData;
@@ -45,26 +44,30 @@ where
     pub async fn execute(
         &self,
         aggregate_id: &A::Id,
-        command: A::Command,
+        commands: Vec<A::Command>,
         context: BusinessContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         // 如果不存在则创建新的聚合实例
-        let mut aggregate = match self.repo.load(&aggregate_id.to_string()).await? {
-            Some(aggregate) => aggregate,
-            None => <A as Entity>::new(aggregate_id.clone(), 0),
-        };
+        let mut aggregate = self
+            .repo
+            .load(&aggregate_id.to_string())
+            .await?
+            .unwrap_or(A::new(aggregate_id.clone(), 0));
 
-        // 执行命令
-        let events = aggregate.execute(command)?;
+        // 执行命令，获取事件
+        let events = commands.into_iter().try_fold(Vec::new(), |mut acc, cmd| {
+            let mut events = aggregate.execute(cmd)?;
 
-        // 应用所有新生成的事件到聚合状态
-        for event in &events {
-            aggregate.apply(event);
-        }
+            for event in &events {
+                aggregate.apply(event);
+            }
+
+            acc.append(&mut events);
+
+            Ok(acc)
+        })?;
 
         // 保存聚合状态和未提交的事件
-        let event_envelopes = self.repo.save(&aggregate, events, context).await?;
-
-        Ok(event_envelopes)
+        self.repo.save(&aggregate, events, context).await
     }
 }

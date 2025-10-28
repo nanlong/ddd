@@ -518,11 +518,11 @@ async fn main() -> AnyResult<()> {
     for (product_id, quantity, price) in items {
         root.execute(
             &order_id,
-            OrderCommand::AddItem {
+            vec![OrderCommand::AddItem {
                 product_id: product_id.to_string(),
                 quantity,
                 price,
-            },
+            }],
             BusinessContext::default(),
         )
         .await?;
@@ -537,9 +537,9 @@ async fn main() -> AnyResult<()> {
     // 移除一个商品
     root.execute(
         &order_id,
-        OrderCommand::RemoveItem {
+        vec![OrderCommand::RemoveItem {
             product_id: "product-C".to_string(),
-        },
+        }],
         BusinessContext::default(),
     )
     .await?;
@@ -552,12 +552,20 @@ async fn main() -> AnyResult<()> {
 
     // 继续订单流程
     println!("\n--- 订单状态流转 ---");
-    root.execute(&order_id, OrderCommand::Confirm, BusinessContext::default())
-        .await?;
+    root.execute(
+        &order_id,
+        vec![OrderCommand::Confirm],
+        BusinessContext::default(),
+    )
+    .await?;
     println!("✅ 确认订单");
 
-    root.execute(&order_id, OrderCommand::Pay, BusinessContext::default())
-        .await?;
+    root.execute(
+        &order_id,
+        vec![OrderCommand::Pay],
+        BusinessContext::default(),
+    )
+    .await?;
     println!("✅ 支付订单");
 
     // 保存第二个快照
@@ -565,8 +573,12 @@ async fn main() -> AnyResult<()> {
     snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
-    root.execute(&order_id, OrderCommand::Ship, BusinessContext::default())
-        .await?;
+    root.execute(
+        &order_id,
+        vec![OrderCommand::Ship],
+        BusinessContext::default(),
+    )
+    .await?;
     println!("✅ 发货订单");
 
     // 保存第三个快照
@@ -574,8 +586,12 @@ async fn main() -> AnyResult<()> {
     snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
-    root.execute(&order_id, OrderCommand::Deliver, BusinessContext::default())
-        .await?;
+    root.execute(
+        &order_id,
+        vec![OrderCommand::Deliver],
+        BusinessContext::default(),
+    )
+    .await?;
     println!("✅ 签收订单");
 
     // 保存第四个快照
@@ -635,11 +651,11 @@ async fn main() -> AnyResult<()> {
     let order_id_2 = "order-002".to_string();
     root.execute(
         &order_id_2,
-        OrderCommand::AddItem {
+        vec![OrderCommand::AddItem {
             product_id: "product-D".to_string(),
             quantity: 1,
             price: 100,
-        },
+        }],
         BusinessContext::default(),
     )
     .await?;
@@ -647,7 +663,7 @@ async fn main() -> AnyResult<()> {
 
     root.execute(
         &order_id_2,
-        OrderCommand::Cancel,
+        vec![OrderCommand::Cancel],
         BusinessContext::default(),
     )
     .await?;
