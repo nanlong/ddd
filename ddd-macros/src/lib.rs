@@ -1,13 +1,12 @@
 //! DDD 辅助宏（拆分模块版）
 //! - 每个宏放置在独立文件，根仅做入口与转发
-
-use proc_macro::TokenStream;
-
-mod derive_utils;
+mod domain_event;
 mod entity;
 mod entity_id;
-mod event;
-mod field_utils;
+mod utils;
+mod value_object;
+
+use proc_macro::TokenStream;
 
 /// 实体宏（原 aggregate）
 #[proc_macro_attribute]
@@ -21,8 +20,14 @@ pub fn entity_id(attr: TokenStream, item: TokenStream) -> TokenStream {
     entity_id::expand(attr, item)
 }
 
-/// 领域事件宏
+/// 领域事件宏（新名称）
 #[proc_macro_attribute]
-pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
-    event::expand(attr, item)
+pub fn domain_event(attr: TokenStream, item: TokenStream) -> TokenStream {
+    domain_event::expand(attr, item)
+}
+
+/// 值对象宏
+#[proc_macro_attribute]
+pub fn value_object(attr: TokenStream, item: TokenStream) -> TokenStream {
+    value_object::expand(attr, item)
 }

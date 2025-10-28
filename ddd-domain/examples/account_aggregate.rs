@@ -9,7 +9,7 @@ use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, serialize_events,
 };
-use ddd_macros::{entity, entity_id, event};
+use ddd_macros::{domain_event, entity, entity_id};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -35,7 +35,7 @@ enum AccountCommand {
     Withdraw { amount: usize },
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum AccountEvent {
     #[event(event_type = "account.opened")]

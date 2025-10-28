@@ -1,15 +1,16 @@
-use crate::derive_utils::apply_derives;
+use crate::utils::apply_derives;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{Item, parse_macro_input};
+use syn::{Item, Result, Token, parse::Parse, parse::ParseStream, parse_macro_input};
 
 /// #[entity_id] 宏实现
 /// 仅支持单字段 tuple struct，并为包装类型：
-/// - 合并/追加派生：Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash
+/// - 合并/追加派生：Default, Clone, (Debug 可控), Serialize, Deserialize, PartialEq, Eq, Hash
 /// - 提供 new(value)、Display、FromStr、AsRef/AsMut、From 等便捷实现
+/// - 参数：`#[entity_id(debug = true|false)]`，默认 true
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let _ = attr; // 暂无参数
+    let cfg = parse_macro_input!(attr as EntityIdAttrConfig);
     let input = parse_macro_input!(item as Item);
 
     let st = match input {
@@ -45,16 +46,21 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // 合并/规范 derive
     let mut st_out = st.clone();
-    let required: Vec<syn::Path> = vec![
+
+    let mut required: Vec<syn::Path> = vec![
         syn::parse_quote!(Default),
         syn::parse_quote!(Clone),
-        syn::parse_quote!(Debug),
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
         syn::parse_quote!(PartialEq),
         syn::parse_quote!(Eq),
         syn::parse_quote!(Hash),
     ];
+
+    if cfg.derive_debug.unwrap_or(true) {
+        required.insert(0, syn::parse_quote!(Debug));
+    }
+
     apply_derives(&mut st_out.attrs, required);
 
     let ident = &st_out.ident;
@@ -116,4 +122,65 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(out)
+}
+
+// -------- parsing --------
+
+struct EntityIdAttrConfig {
+    derive_debug: Option<bool>,
+}
+
+impl Parse for EntityIdAttrConfig {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.is_empty() {
+            return Ok(Self { derive_debug: None });
+        }
+
+        let mut derive_debug: Option<bool> = None;
+        let pairs: syn::punctuated::Punctuated<EntityIdAttrElem, Token![,]> =
+            syn::punctuated::Punctuated::parse_terminated(input)?;
+        for elem in pairs {
+            match elem {
+                EntityIdAttrElem::Debug(b) => {
+                    if derive_debug.is_some() {
+                        return Err(syn::Error::new(
+                            proc_macro2::Span::call_site(),
+                            "duplicate key 'debug' in attribute",
+                        ));
+                    }
+                    derive_debug = Some(b);
+                }
+            }
+        }
+        Ok(Self { derive_debug })
+    }
+}
+
+enum EntityIdAttrElem {
+    Debug(bool),
+}
+
+impl Parse for EntityIdAttrElem {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let key: syn::Ident = input.parse()?;
+        if key == "debug" {
+            let _eq: Token![=] = input.parse()?;
+            let expr: syn::Expr = input.parse()?;
+            match expr {
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Bool(b),
+                    ..
+                }) => Ok(Self::Debug(b.value())),
+                other => Err(syn::Error::new(
+                    other.span(),
+                    "expected boolean literal for 'debug'",
+                )),
+            }
+        } else {
+            Err(syn::Error::new(
+                key.span(),
+                "unknown key in attribute; expected 'debug'",
+            ))
+        }
+    }
 }

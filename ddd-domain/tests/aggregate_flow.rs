@@ -8,7 +8,7 @@ use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent, serialize_events,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -26,7 +26,7 @@ enum Cmd {
     Withdraw { amount: i64 },
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Evt {
     Deposited { amount: i64 },

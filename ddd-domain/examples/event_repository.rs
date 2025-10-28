@@ -11,7 +11,7 @@ use ddd_domain::event_upcaster::EventUpcasterChain;
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -36,7 +36,7 @@ enum BankAccountCommand {
     Unlock,
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
     #[event(event_type = "bank_account.deposited")]

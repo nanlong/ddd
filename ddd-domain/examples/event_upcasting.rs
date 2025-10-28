@@ -26,7 +26,7 @@ use ddd_domain::persist::{
     SnapshotPolicy, SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy,
     serialize_events,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -50,7 +50,7 @@ enum BankAccountCommand {
 }
 
 // 当前版本的事件（v4）
-#[event]
+#[domain_event]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum BankAccountEvent {
     #[event(event_type = "account.deposited", event_version = 4)]

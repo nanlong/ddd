@@ -13,7 +13,7 @@ use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotRepository, SnapshotRepositoryWithPolicy, deserialize_events, serialize_events,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -66,7 +66,7 @@ enum OrderCommand {
     Cancel,
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum OrderEvent {
     #[event(event_type = "order.item_added")]

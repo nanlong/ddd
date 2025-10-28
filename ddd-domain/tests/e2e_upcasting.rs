@@ -9,7 +9,7 @@ use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcaste
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -21,7 +21,7 @@ struct Wallet {
     currency: String,
 }
 
-#[event(version = 3)]
+#[domain_event(version = 3)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum WalletEvent {
     Deposited { minor_units: i64, currency: String },

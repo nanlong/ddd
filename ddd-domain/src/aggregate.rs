@@ -35,7 +35,7 @@ mod tests {
     use crate::domain_event::{BusinessContext, DomainEvent};
     use crate::entity::Entity;
     use crate::error::DomainError;
-    use ddd_macros::{entity, event};
+    use ddd_macros::{domain_event, entity};
     use serde::{Deserialize, Serialize};
 
     #[entity]
@@ -50,7 +50,7 @@ mod tests {
         Sub { amount: i32 },
     }
 
-    #[event(version = 1)]
+    #[domain_event(version = 1)]
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     enum CounterEvent {
         Added { amount: i32 },

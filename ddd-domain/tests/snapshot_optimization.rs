@@ -9,7 +9,7 @@ use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy,
 };
-use ddd_macros::{entity, event};
+use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -20,7 +20,7 @@ struct Counter {
     value: i64,
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum CounterEvent {
     Incr { by: i64 },

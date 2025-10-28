@@ -1,5 +1,4 @@
-use crate::derive_utils::apply_derives;
-use crate::field_utils::ensure_required_fields;
+use crate::utils::{apply_derives, ensure_required_fields};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::punctuated::Punctuated;
@@ -41,6 +40,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // 重新组织字段：确保 id/version 在最前，并避免重复
     let usize_ty: Type = syn::parse_quote! { usize };
+
     ensure_required_fields(
         fields_named,
         &[("id", &id_type), ("version", &usize_ty)],
@@ -53,9 +53,11 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
     ];
+
     if cfg.derive_debug.unwrap_or(true) {
         required.insert(0, syn::parse_quote!(Debug));
     }
+
     apply_derives(&mut st.attrs, required);
 
     let out_struct = ItemStruct { ..st };
@@ -144,6 +146,7 @@ enum EntityAttrElem {
 impl Parse for EntityAttrElem {
     fn parse(input: ParseStream) -> Result<Self> {
         let key: syn::Ident = input.parse()?;
+
         if key == "id" {
             let _eq: Token![=] = input.parse()?;
             let ty: Type = input.parse()?;

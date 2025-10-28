@@ -1,5 +1,4 @@
-use crate::derive_utils::apply_derives;
-use crate::field_utils::ensure_required_fields;
+use crate::utils::{apply_derives, ensure_required_fields};
 use proc_macro::TokenStream;
 use quote::{ToTokens, quote};
 use std::collections::HashMap;
