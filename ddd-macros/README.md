@@ -1,6 +1,6 @@
 # ddd-macros
 
-帮助为 `ddd-domain` 生成常用样板代码的过程宏集合：`#[entity]`、`#[entity_id]`、`#[event]`、`#[value_object]`。
+帮助为 `ddd-domain` 生成常用样板代码的过程宏集合：`#[entity]`、`#[entity_id]`、`#[domain_event]`、`#[value_object]`。
 
 > 宏在展开时使用绝对路径 `::ddd_domain::...`。`ddd-domain` 已通过 `extern crate self as ddd_domain;` 暴露自引用别名，确保在其测试/示例中宏可正确解析。
 
@@ -8,7 +8,7 @@
 
 - `#[entity]` 默认追加 `#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]`（可用 `debug = false` 关闭）
 - `#[entity_id]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`（可用 `debug = false` 关闭）
-- `#[event]` 默认追加 `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`
+- `#[domain_event]` 默认追加 `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`
 - `#[value_object]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`（可用 `debug = false` 关闭）
 
 说明：宏会与已有 `derive` 合并并去重（对 `Serialize`/`Deserialize` 统一为 `serde::...` 以避免重复）。
@@ -52,7 +52,7 @@ struct Foo {
   - `From<&Inner> for Wrapper`（要求 `Inner: Clone`）
 - 仅支持恰好 1 个字段。
 
-## `#[event]`
+## `#[domain_event]`
 
 作用于具名字段枚举（每个变体为具名字段）：
 

@@ -8,7 +8,7 @@ use syn::{
     Expr, Ident, Item, Result, Token, Type, parse::Parse, parse::ParseStream, parse_macro_input,
 };
 
-/// #[event] 宏实现
+/// #[domain_event] 宏实现
 /// - 仅支持具名字段变体：`Variant { .. }`
 /// - 确保每个变体具备字段：`id: IdType`, `aggregate_version: usize`
 /// - 生成 `::ddd_domain::domain_event::DomainEvent` 实现（event_id/type/version/aggregate_version）
@@ -21,9 +21,12 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let enum_item = match &mut input {
         Item::Enum(e) => e,
         other => {
-            return syn::Error::new(other.span(), "#[event] can only be used on enum types")
-                .to_compile_error()
-                .into();
+            return syn::Error::new(
+                other.span(),
+                "#[domain_event] can only be used on enum types",
+            )
+            .to_compile_error()
+            .into();
         }
     };
 
@@ -108,7 +111,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
             _ => {
                 return syn::Error::new(
                     v.span(),
-                    "#[event] supports only named-field enum variants, e.g., Variant { x: T }",
+                    "#[domain_event] supports only named-field enum variants, e.g., Variant { x: T }",
                 )
                 .to_compile_error()
                 .into();

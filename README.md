@@ -91,9 +91,9 @@ enum UserEvent {
 - 自动合并并追加常用派生，避免重复书写；默认派生如下：
   - `#[entity]`：`Debug`（可用 `#[entity(debug = false)]` 关闭）, `Default`, `serde::Serialize`, `serde::Deserialize`
   - `#[entity_id]`：`Default`, `Clone`, `Debug`, `serde::Serialize`, `serde::Deserialize`, `PartialEq`, `Eq`, `Hash`
-  - `#[event]`：`Debug`, `Clone`, `PartialEq`, `serde::Serialize`, `serde::Deserialize`
+  - `#[domain_event]`：`Debug`, `Clone`, `PartialEq`, `serde::Serialize`, `serde::Deserialize`
 - `#[entity]` 会将 `id`/`version` 放在结构体字段最前，并生成 `new/id/version` 实现。
-- `#[event]` 会为每个变体补全 `id`/`aggregate_version`，并实现 `DomainEvent` 的访问器方法。
+- `#[domain_event]` 会为每个变体补全 `id`/`aggregate_version`，并实现 `DomainEvent` 的访问器方法。
 
 UI 测试：`cargo test -p ddd-macros`
 

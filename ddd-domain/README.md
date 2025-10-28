@@ -25,7 +25,7 @@
 本仓库配套的 `ddd-macros` 能生成常用样板：
 
 - `#[entity]`：为具名字段结构体追加 `id`/`version` 并实现 `Entity`
-- `#[event]`：为具名字段变体的枚举追加 `id`/`aggregate_version` 并实现 `DomainEvent`
+- `#[domain_event]`：为具名字段变体的枚举追加 `id`/`aggregate_version` 并实现 `DomainEvent`
 
 为了在本 crate 的测试与宏展开中解析到绝对路径 `::ddd_domain::...`，库根导出了自引用别名：
 
