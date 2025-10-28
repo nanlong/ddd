@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub trait SnapshotRepository: Send + Sync {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         version: Option<usize>,
     ) -> Result<Option<SerializedSnapshot>>;
 
@@ -24,7 +24,7 @@ where
 {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         version: Option<usize>,
     ) -> Result<Option<SerializedSnapshot>> {
         (**self).get_snapshot::<A>(aggregate_id, version).await
@@ -72,7 +72,7 @@ where
 {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         version: Option<usize>,
     ) -> Result<Option<SerializedSnapshot>> {
         self.inner.get_snapshot::<A>(aggregate_id, version).await

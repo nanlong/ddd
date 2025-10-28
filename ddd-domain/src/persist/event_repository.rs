@@ -15,11 +15,11 @@ use std::sync::Arc;
 
 #[async_trait]
 pub trait EventRepository: Send + Sync {
-    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>>;
+    async fn get_events<A: Aggregate>(&self, aggregate_id: &A::Id) -> Result<Vec<SerializedEvent>>;
 
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> Result<Vec<SerializedEvent>>;
 
@@ -31,7 +31,7 @@ pub trait EventRepositoryExt: EventRepository {
     /// 拉取并上抬（Upcast）指定聚合的全部事件，返回 `AggregateEvents`
     async fn get_aggregate_events_upcasted<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         upcaster_chain: &EventUpcasterChain,
     ) -> Result<AggregateEvents<A>> {
         let serialized = self.get_events::<A>(aggregate_id).await?;
@@ -45,13 +45,13 @@ impl<T> EventRepository for Arc<T>
 where
     T: EventRepository + ?Sized,
 {
-    async fn get_events<A: Aggregate>(&self, aggregate_id: &str) -> Result<Vec<SerializedEvent>> {
+    async fn get_events<A: Aggregate>(&self, aggregate_id: &A::Id) -> Result<Vec<SerializedEvent>> {
         (**self).get_events::<A>(aggregate_id).await
     }
 
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> Result<Vec<SerializedEvent>> {
         (**self)

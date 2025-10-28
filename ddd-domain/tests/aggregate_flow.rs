@@ -111,26 +111,26 @@ struct InMemoryEventRepository {
 impl EventRepository for InMemoryEventRepository {
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
     ) -> DomainResult<Vec<SerializedEvent>> {
         Ok(self
             .inner
             .lock()
             .unwrap()
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .cloned()
             .unwrap_or_default())
     }
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         Ok(self
             .inner
             .lock()
             .unwrap()
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|v| {
                 v.iter()
                     .filter(|e| e.aggregate_version() > last_version)

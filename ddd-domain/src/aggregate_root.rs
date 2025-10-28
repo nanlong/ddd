@@ -50,7 +50,7 @@ where
         // 如果不存在则创建新的聚合实例
         let mut aggregate = self
             .repo
-            .load(&aggregate_id.to_string())
+            .load(aggregate_id)
             .await?
             .unwrap_or(A::new(aggregate_id.clone(), 0));
 

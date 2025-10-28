@@ -5,7 +5,7 @@ use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
 use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
 use ddd_domain::entity::Entity;
-use ddd_domain::error::DomainError;
+use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, serialize_events,
 };
@@ -142,20 +142,23 @@ struct InMemoryEventRepository {
 impl EventRepository for InMemoryEventRepository {
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
-    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        aggregate_id: &A::Id,
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
-        Ok(events.get(aggregate_id).cloned().unwrap_or_default())
+        Ok(events
+            .get(&aggregate_id.to_string())
+            .cloned()
+            .unwrap_or_default())
     }
 
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
-    ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+    ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|evts| {
                 evts.iter()
                     .filter(|e| e.aggregate_version() > last_version)
@@ -165,7 +168,7 @@ impl EventRepository for InMemoryEventRepository {
             .unwrap_or_default())
     }
 
-    async fn save(&self, events: Vec<SerializedEvent>) -> ddd_domain::error::DomainResult<()> {
+    async fn save(&self, events: Vec<SerializedEvent>) -> DomainResult<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -196,10 +199,10 @@ impl InMemoryAccountRepo {
 
 #[async_trait]
 impl AggregateRepository<Account> for InMemoryAccountRepo {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<Account>, DomainError> {
+    async fn load(&self, aggregate_id: &AccountId) -> Result<Option<Account>, DomainError> {
         // 不通过事件重放恢复，直接读取最新聚合快照
         let states = self.states.lock().unwrap();
-        Ok(states.get(aggregate_id).cloned())
+        Ok(states.get(&aggregate_id.to_string()).cloned())
     }
 
     async fn save(
@@ -292,7 +295,7 @@ async fn main() {
     println!("events: {:?}", events);
 
     // 重新加载并打印状态
-    let loaded = repo.load(&id.to_string()).await.unwrap().unwrap();
+    let loaded = repo.load(&id).await.unwrap().unwrap();
     println!("\n--- 重新加载聚合 ---");
     println!(
         "聚合: id={}, 版本={}, 余额={}",

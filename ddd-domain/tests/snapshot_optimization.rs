@@ -59,20 +59,20 @@ struct CountingEventRepo {
 impl EventRepository for CountingEventRepo {
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
     ) -> DomainResult<Vec<SerializedEvent>> {
         *self.get_all_calls.lock().unwrap() += 1;
         Ok(self
             .events
             .lock()
             .unwrap()
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .cloned()
             .unwrap_or_default())
     }
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         *self.get_last_calls.lock().unwrap() += 1;
@@ -80,7 +80,7 @@ impl EventRepository for CountingEventRepo {
             .events
             .lock()
             .unwrap()
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|v| {
                 v.iter()
                     .filter(|e| e.aggregate_version() > last_version)
@@ -109,10 +109,15 @@ struct InMemorySnapshotPolicyRepo {
 impl SnapshotRepository for InMemorySnapshotPolicyRepo {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         _version: Option<usize>,
     ) -> DomainResult<Option<SerializedSnapshot>> {
-        Ok(self.snaps.lock().unwrap().get(aggregate_id).cloned())
+        Ok(self
+            .snaps
+            .lock()
+            .unwrap()
+            .get(&aggregate_id.to_string())
+            .cloned())
     }
     async fn save<A: Aggregate>(&self, aggregate: &A) -> DomainResult<()> {
         let snap = SerializedSnapshot::from_aggregate(aggregate)?;
@@ -162,17 +167,17 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     let chain = Arc::new(ddd_domain::event_upcaster::EventUpcasterChain::default());
     let store = SnapshotPolicyRepo::new(repo.clone(), snaps.clone(), chain);
 
-    let id = "c-1";
+    let id = "c-1".to_string();
 
     // 写入大量历史事件（版本 1..=100）
     let mut all = Vec::new();
     for v in 1..=100 {
-        all.push(mk_incr(id, v, 1));
+        all.push(mk_incr(&id, v, 1));
     }
     repo.save(all).await?;
 
     // 保存快照（版本 100）
-    let mut agg = <Counter as Entity>::new(id.to_string(), 0);
+    let mut agg = <Counter as Entity>::new(id.clone(), 0);
     for v in 1..=100 {
         agg.apply(&CounterEvent::Incr {
             id: ulid::Ulid::new().to_string(),
@@ -185,12 +190,12 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     // 追加增量事件（101..105）
     let mut inc = Vec::new();
     for v in 101..=105 {
-        inc.push(mk_incr(id, v, 1));
+        inc.push(mk_incr(&id, v, 1));
     }
     repo.save(inc).await?;
 
     // 加载（应当仅调用一次 get_last_events，且不调用 get_events）
-    let loaded: Counter = store.load(id).await?.unwrap();
+    let loaded: Counter = store.load(&id).await?.unwrap();
     assert_eq!(loaded.version(), 105);
     assert_eq!(loaded.value, 105);
     assert_eq!(*repo.get_all_calls.lock().unwrap(), 0);

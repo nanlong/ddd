@@ -282,21 +282,24 @@ impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
-        Ok(events.get(aggregate_id).cloned().unwrap_or_else(Vec::new))
+        Ok(events
+            .get(&aggregate_id.to_string())
+            .cloned()
+            .unwrap_or_else(Vec::new))
     }
 
     /// 获取聚合从指定版本之后的事件
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|evts| {
                 evts.iter()
                     .filter(|e| e.aggregate_version() > last_version)
@@ -346,7 +349,7 @@ impl SnapshotRepository for InMemorySnapshotRepository {
     /// 获取快照，如果指定版本则获取该版本或之前的最新快照
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         version: Option<usize>,
     ) -> DomainResult<Option<SerializedSnapshot>> {
         let snapshots = self.snapshots.lock().unwrap();
@@ -426,7 +429,10 @@ where
     E: EventRepository,
     S: SnapshotRepository,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<OrderAggregate>, DomainError> {
+    async fn load(
+        &self,
+        aggregate_id: &<OrderAggregate as Entity>::Id,
+    ) -> Result<Option<OrderAggregate>, DomainError> {
         // 1. 尝试从快照加载
         if let Some(snapshot) = self
             .snapshot_repo
@@ -462,7 +468,7 @@ where
         }
 
         let envelopes = deserialize_events::<OrderAggregate>(&self.upcaster_chain, serialized)?;
-        let mut order = <OrderAggregate as Entity>::new(aggregate_id.to_string(), 0);
+        let mut order = <OrderAggregate as Entity>::new(aggregate_id.clone(), 0);
         for envelope in envelopes.iter() {
             order.apply(&envelope.payload);
         }

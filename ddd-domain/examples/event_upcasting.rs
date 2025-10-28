@@ -538,20 +538,23 @@ struct InMemoryEventRepository {
 impl EventRepository for InMemoryEventRepository {
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let store = self.events.lock().unwrap();
-        Ok(store.get(aggregate_id).cloned().unwrap_or_default())
+        Ok(store
+            .get(&aggregate_id.to_string())
+            .cloned()
+            .unwrap_or_default())
     }
 
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let store = self.events.lock().unwrap();
         Ok(store
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|events| {
                 events
                     .iter()
@@ -596,7 +599,7 @@ impl Default for InMemorySnapshotRepository {
 impl SnapshotRepository for InMemorySnapshotRepository {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         version: Option<usize>,
     ) -> DomainResult<Option<SerializedSnapshot>> {
         let store = self.snapshots.lock().unwrap();
@@ -790,7 +793,7 @@ fn create_withdraw(
 async fn main() -> AnyResult<()> {
     println!("=== Event Upcasting 示例 ===\n");
 
-    let account_id = "acc-001";
+    let account_id = "acc-001".to_string();
 
     // 构建 Upcaster Chain，并包裹在 Arc 中便于共享
     let upcaster_chain: Arc<EventUpcasterChain> = Arc::new(
@@ -816,16 +819,16 @@ async fn main() -> AnyResult<()> {
     // 构造历史事件（混合多个版本）并写入事件仓储
     println!("原始事件（混合版本）:");
     let historical_events = vec![
-        create_deposit(account_id, 1, Some(100), None, None), // v1: 存入 100 元
-        create_withdraw(account_id, 1, Some(30), None, None), // v1: 取出 30 元
-        create_deposit(account_id, 2, Some(50), None, Some("CNY")), // v2: 存入 50 元
-        create_withdraw(account_id, 2, Some(20), None, Some("CNY")), // v2: 取出 20 元
-        create_withdraw(account_id, 2, Some(5), None, Some("CNY")), // v2: 取出 5 元
-        create_deposit(account_id, 3, None, Some(8000), Some("CNY")), // v3: 存入 80 元 (8000分)
-        create_withdraw(account_id, 3, None, Some(1000), Some("CNY")), // v3: 取出 10 元 (1000分)
-        create_deposit(account_id, 3, None, Some(2000), Some("CNY")), // v3: 存入 20 元 (2000分)
-        create_deposit(account_id, 4, None, Some(5000), Some("CNY")), // v4: 存入 50 元 (5000分)
-        create_withdraw(account_id, 4, None, Some(3000), Some("CNY")), // v4: 取出 30 元 (3000分)
+        create_deposit(&account_id, 1, Some(100), None, None), // v1: 存入 100 元
+        create_withdraw(&account_id, 1, Some(30), None, None), // v1: 取出 30 元
+        create_deposit(&account_id, 2, Some(50), None, Some("CNY")), // v2: 存入 50 元
+        create_withdraw(&account_id, 2, Some(20), None, Some("CNY")), // v2: 取出 20 元
+        create_withdraw(&account_id, 2, Some(5), None, Some("CNY")), // v2: 取出 5 元
+        create_deposit(&account_id, 3, None, Some(8000), Some("CNY")), // v3: 存入 80 元 (8000分)
+        create_withdraw(&account_id, 3, None, Some(1000), Some("CNY")), // v3: 取出 10 元 (1000分)
+        create_deposit(&account_id, 3, None, Some(2000), Some("CNY")), // v3: 存入 20 元 (2000分)
+        create_deposit(&account_id, 4, None, Some(5000), Some("CNY")), // v4: 存入 50 元 (5000分)
+        create_withdraw(&account_id, 4, None, Some(3000), Some("CNY")), // v4: 取出 30 元 (3000分)
     ];
 
     for (i, se) in historical_events.iter().enumerate() {
@@ -839,7 +842,7 @@ async fn main() -> AnyResult<()> {
     println!("使用 EventSourcedRepo 重建聚合:");
     let account: BankAccount =
         match EventSourcedRepo::new(event_repo.clone(), upcaster_chain.clone())
-            .load(account_id)
+            .load(&account_id)
             .await?
         {
             Some(aggregate) => aggregate,
@@ -861,8 +864,8 @@ async fn main() -> AnyResult<()> {
     println!("  💾 已保存快照 (版本 {})", account.version());
 
     let incremental_events = vec![
-        create_withdraw(account_id, 2, Some(10), None, Some("CNY")), // v2: 追加取款 10 元
-        create_deposit(account_id, 3, None, Some(1500), Some("CNY")), // v3: 追加存款 15 元 (1500分)
+        create_withdraw(&account_id, 2, Some(10), None, Some("CNY")), // v2: 追加取款 10 元
+        create_deposit(&account_id, 3, None, Some(1500), Some("CNY")), // v3: 追加存款 15 元 (1500分)
     ];
     println!(
         "  ➕ 追加 {} 个增量事件（快照之后）",
@@ -876,7 +879,7 @@ async fn main() -> AnyResult<()> {
         snapshot_repo.clone(),
         upcaster_chain.clone(),
     )
-    .load(account_id)
+    .load(&account_id)
     .await?
     {
         Some(aggregate) => aggregate,
@@ -902,11 +905,8 @@ async fn main() -> AnyResult<()> {
         currency: "CNY".to_string(),
     };
 
-    let new_envelope: EventEnvelope<BankAccount> = EventEnvelope::new(
-        &account_id.to_string(),
-        new_event,
-        BusinessContext::default(),
-    );
+    let new_envelope: EventEnvelope<BankAccount> =
+        EventEnvelope::new(&account_id, new_event, BusinessContext::default());
 
     let serialized = serialize_events(&[new_envelope])?;
     println!(

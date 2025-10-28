@@ -19,7 +19,7 @@ pub trait AggregateRepository<A>: Send + Sync
 where
     A: Aggregate,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error>;
+    async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error>;
 
     async fn save(
         &self,
@@ -35,7 +35,7 @@ where
     A: Aggregate,
     T: AggregateRepository<A> + ?Sized,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
+    async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error> {
         (**self).load(aggregate_id).await
     }
 
@@ -74,7 +74,7 @@ where
     {
         let serialized = self
             .event_repo
-            .get_last_events::<A>(&aggregate.id().to_string(), aggregate.version())
+            .get_last_events::<A>(aggregate.id(), aggregate.version())
             .await?;
 
         if serialized.is_empty() && aggregate.version() == 0 {
@@ -102,12 +102,11 @@ where
     E: EventRepository + Send + Sync,
     A::Error: From<DomainError> + Send + Sync,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
-        let id: A::Id = aggregate_id.parse().map_err(|_| {
-            A::Error::from(DomainError::InvalidAggregateId(aggregate_id.to_string()))
-        })?;
-
-        let aggregate = self.replay(A::new(id, 0)).await.map_err(A::Error::from)?;
+    async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error> {
+        let aggregate = self
+            .replay(A::new(aggregate_id.clone(), 0))
+            .await
+            .map_err(A::Error::from)?;
 
         Ok(aggregate)
     }
@@ -177,7 +176,7 @@ where
     S: SnapshotRepository + Send + Sync,
     A::Error: From<DomainError> + Send + Sync,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<A>, A::Error> {
+    async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error> {
         let event_sourced_repo = EventSourcedRepo::new(
             Arc::clone(&self.event_repo),
             Arc::clone(&self.upcaster_chain),

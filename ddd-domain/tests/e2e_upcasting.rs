@@ -148,19 +148,25 @@ struct MemRepo {
 }
 #[async_trait]
 impl EventRepository for MemRepo {
-    async fn get_events<A: Aggregate>(&self, id: &str) -> DomainResult<Vec<SerializedEvent>> {
-        Ok(self.m.lock().unwrap().get(id).cloned().unwrap_or_default())
+    async fn get_events<A: Aggregate>(&self, id: &A::Id) -> DomainResult<Vec<SerializedEvent>> {
+        Ok(self
+            .m
+            .lock()
+            .unwrap()
+            .get(&id.to_string())
+            .cloned()
+            .unwrap_or_default())
     }
     async fn get_last_events<A: Aggregate>(
         &self,
-        id: &str,
+        id: &A::Id,
         last: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         Ok(self
             .m
             .lock()
             .unwrap()
-            .get(id)
+            .get(&id.to_string())
             .map(|v| {
                 v.iter()
                     .filter(|e| e.aggregate_version() > last)
@@ -249,14 +255,14 @@ async fn e2e_upcasting_end_to_end() -> AnyResult<()> {
     );
     let store = Arc::new(EventSourcedRepo::new(repo.clone(), upcasters));
 
-    let id = "w-1";
+    let id = "w-1".to_string();
     let events = vec![
-        mk_v1(id, 100),       // 100 元 -> 10000 分
-        mk_v2(id, 30, "CNY"), // 30 元 -> 3000 分
+        mk_v1(&id, 100),       // 100 元 -> 10000 分
+        mk_v2(&id, 30, "CNY"), // 30 元 -> 3000 分
     ];
     repo.save(events).await?;
 
-    let agg: Wallet = store.load(id).await?.unwrap();
+    let agg: Wallet = store.load(&id).await?.unwrap();
     assert_eq!(agg.balance_minor_units, 13000);
     assert_eq!(agg.version(), 2);
     Ok(())

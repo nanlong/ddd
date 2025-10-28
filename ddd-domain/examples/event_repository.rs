@@ -168,21 +168,24 @@ impl EventRepository for InMemoryEventRepository {
     /// 获取聚合的所有事件
     async fn get_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
-        Ok(events.get(aggregate_id).cloned().unwrap_or_default())
+        Ok(events
+            .get(&aggregate_id.to_string())
+            .cloned()
+            .unwrap_or_default())
     }
 
     /// 获取聚合从指定版本之后的事件
     async fn get_last_events<A: Aggregate>(
         &self,
-        aggregate_id: &str,
+        aggregate_id: &A::Id,
         last_version: usize,
     ) -> DomainResult<Vec<SerializedEvent>> {
         let events = self.events.lock().unwrap();
         Ok(events
-            .get(aggregate_id)
+            .get(&aggregate_id.to_string())
             .map(|evts| {
                 evts.iter()
                     .filter(|e| e.aggregate_version() > last_version)
@@ -241,7 +244,10 @@ impl<E> AggregateRepository<BankAccount> for BankAccountRepository<BankAccount, 
 where
     E: EventRepository,
 {
-    async fn load(&self, aggregate_id: &str) -> Result<Option<BankAccount>, DomainError> {
+    async fn load(
+        &self,
+        aggregate_id: &<BankAccount as Entity>::Id,
+    ) -> Result<Option<BankAccount>, DomainError> {
         let serialized = self
             .event_repo
             .get_events::<BankAccount>(aggregate_id)
@@ -252,7 +258,7 @@ where
         }
 
         let envelopes = deserialize_events::<BankAccount>(&self.upcaster_chain, serialized)?;
-        let mut account = <BankAccount as Entity>::new(aggregate_id.to_string(), 0);
+        let mut account = <BankAccount as Entity>::new(aggregate_id.clone(), 0);
         for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
         }

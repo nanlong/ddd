@@ -7,7 +7,7 @@ use std::{fmt::Display, str::FromStr};
 /// 具备唯一标识与版本的实体抽象
 pub trait Entity: Send + Sync {
     /// 实体标识类型，要求可解析、可显示与可克隆
-    type Id: FromStr + Clone + Display;
+    type Id: FromStr + Clone + Display + Send + Sync;
 
     /// 使用给定标识创建实体（聚合）
     fn new(aggregate_id: Self::Id, version: usize) -> Self;
