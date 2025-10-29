@@ -20,7 +20,8 @@ type QueryHandlerFn =
 /// - 通过 TypeId 注册不同 Query 对应的 Handler
 /// - 以类型擦除方式调度，并在调用端进行结果还原
 pub struct InMemoryQueryBus {
-    handlers: DashMap<TypeId, (&'static str, QueryHandlerFn)>,
+    // 使用 (QueryTypeId, ResultTypeId) 作为键，避免相同 Query 不同返回类型的冲突
+    handlers: DashMap<(TypeId, TypeId), (&'static str, QueryHandlerFn)>,
 }
 
 impl Default for InMemoryQueryBus {
@@ -43,7 +44,7 @@ impl InMemoryQueryBus {
         R: Send + 'static,
         H: QueryHandler<Q, R> + Send + Sync + 'static,
     {
-        let key = TypeId::of::<Q>();
+        let key = (TypeId::of::<Q>(), TypeId::of::<R>());
 
         let f: QueryHandlerFn = {
             let handler = handler.clone();
@@ -93,7 +94,8 @@ impl InMemoryQueryBus {
         Q: Send + 'static,
         R: Send + 'static,
     {
-        let Some((_name, f)) = self.handlers.get(&TypeId::of::<Q>()).map(|h| h.clone()) else {
+        let key = (TypeId::of::<Q>(), TypeId::of::<R>());
+        let Some((_name, f)) = self.handlers.get(&key).map(|h| h.clone()) else {
             return Err(AppError::HandlerNotFound(type_name::<Q>()));
         };
 
@@ -178,8 +180,10 @@ mod tests {
         let f: QueryHandlerFn = Arc::new(|_boxed_q, _ctx| {
             Box::pin(async move { Ok(Box::new(WrongDto) as BoxAnySend) })
         });
-        bus.handlers
-            .insert(TypeId::of::<Get>(), (type_name::<Get>(), f));
+        bus.handlers.insert(
+            (TypeId::of::<Get>(), TypeId::of::<NumDto>()),
+            (type_name::<Get>(), f),
+        );
 
         let ctx = AppContext::default();
         let err = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap_err();
@@ -213,5 +217,45 @@ mod tests {
         assert_eq!(results.len(), 100);
         assert_eq!(results[0], 1);
         assert_eq!(results[99], 100);
+    }
+
+    #[derive(Debug)]
+    struct Get2;
+
+    #[derive(Debug, Serialize, PartialEq, Eq)]
+    struct NameDto(pub String);
+
+    struct Get2NumHandler;
+    struct Get2NameHandler;
+
+    #[async_trait]
+    impl QueryHandler<Get2, NumDto> for Get2NumHandler {
+        async fn handle(&self, _ctx: &AppContext, _q: Get2) -> Result<NumDto, AppError> {
+            Ok(NumDto(42))
+        }
+    }
+
+    #[async_trait]
+    impl QueryHandler<Get2, NameDto> for Get2NameHandler {
+        async fn handle(&self, _ctx: &AppContext, _q: Get2) -> Result<NameDto, AppError> {
+            Ok(NameDto("Alice".to_string()))
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn same_query_with_different_results() {
+        // 同一查询类型 Get2，分别注册返回 NumDto 与 NameDto 的两个处理器
+        let bus = InMemoryQueryBus::new();
+        bus.register::<Get2, NumDto, _>(Arc::new(Get2NumHandler))
+            .unwrap();
+        bus.register::<Get2, NameDto, _>(Arc::new(Get2NameHandler))
+            .unwrap();
+
+        let ctx = AppContext::default();
+        let NumDto(n) = bus.dispatch::<Get2, NumDto>(&ctx, Get2).await.unwrap();
+        let NameDto(name) = bus.dispatch::<Get2, NameDto>(&ctx, Get2).await.unwrap();
+
+        assert_eq!(n, 42);
+        assert_eq!(name, "Alice");
     }
 }
