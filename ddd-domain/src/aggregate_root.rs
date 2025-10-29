@@ -49,10 +49,9 @@ where
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         // 如果不存在则创建新的聚合实例
         let mut aggregate = self
-            .repo
             .load(aggregate_id)
             .await?
-            .unwrap_or(A::new(aggregate_id.clone(), 0));
+            .unwrap_or_else(|| A::new(aggregate_id.clone(), 0));
 
         // 执行命令，获取事件
         let events = commands.into_iter().try_fold(Vec::new(), |mut acc, cmd| {
@@ -69,5 +68,10 @@ where
 
         // 保存聚合状态和未提交的事件
         self.repo.save(&aggregate, events, context).await
+    }
+
+    /// 加载聚合实例
+    pub async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error> {
+        self.repo.load(aggregate_id).await
     }
 }
