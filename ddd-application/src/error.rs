@@ -17,6 +17,9 @@ pub enum AppError {
     #[error("handler not found: {0}")]
     HandlerNotFound(&'static str),
 
+    #[error("aggregate not found: {0}")]
+    AggregateNotFound(String),
+
     #[error("handler already registered: {0}")]
     AlreadyRegistered(&'static str),
 
