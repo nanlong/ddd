@@ -4,7 +4,7 @@ use ddd_application::context::AppContext;
 use ddd_application::error::AppError;
 use ddd_application::query_bus::QueryBus;
 use ddd_application::query_handler::QueryHandler;
-use ddd_domain::domain_event::BusinessContext;
+use ddd_domain::domain_event::EventContext;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     bus.register::<ListUsers, UsersDto, _>(Arc::new(ListUsersHandler))?;
 
     let ctx = AppContext {
-        biz: BusinessContext::builder()
+        event_context: EventContext::builder()
             .maybe_correlation_id(Some("cor-2".into()))
             .maybe_causation_id(Some("cau-2".into()))
             .maybe_actor_type(Some("user".into()))

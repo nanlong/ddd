@@ -17,7 +17,7 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
-use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::domain_event::{EventContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcasterResult};
@@ -159,8 +159,8 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
             obj.insert("currency".to_string(), serde_json::json!("CNY"));
         }
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -225,8 +225,8 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
             obj.insert("minor_units".to_string(), serde_json::json!(minor_units));
         }
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -297,8 +297,8 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
             }
         });
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -359,8 +359,8 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
             obj.insert("currency".to_string(), serde_json::json!("CNY"));
         }
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -424,8 +424,8 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
             obj.insert("minor_units".to_string(), serde_json::json!(minor_units));
         }
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -496,8 +496,8 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
             }
         });
 
-        // 重建 BusinessContext 以保留原始事件的业务上下文
-        let business_context = BusinessContext::builder()
+        // 重建 EventContext 以保留原始事件的业务上下文
+        let business_context = EventContext::builder()
             .maybe_correlation_id(event.correlation_id().map(|s| s.to_string()))
             .maybe_causation_id(event.causation_id().map(|s| s.to_string()))
             .maybe_actor_type(event.actor_type().map(|s| s.to_string()))
@@ -685,7 +685,7 @@ fn create_deposit(
         ),
         _ => panic!("Unsupported version"),
     };
-    let biz = BusinessContext::builder()
+    let event_context = EventContext::builder()
         .maybe_correlation_id(Some(format!("cor-{id}")))
         .maybe_causation_id(Some(format!("cau-{id}")))
         .maybe_actor_type(Some("user".into()))
@@ -706,7 +706,7 @@ fn create_deposit(
         .actor_id("u-1".into())
         .occurred_at(chrono::Utc::now())
         .payload(payload)
-        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
+        .context(serde_json::to_value(&event_context).expect("serialize EventContext"))
         .build()
 }
 
@@ -760,7 +760,7 @@ fn create_withdraw(
         ),
         _ => panic!("Unsupported version"),
     };
-    let biz = BusinessContext::builder()
+    let event_context = EventContext::builder()
         .maybe_correlation_id(Some(format!("cor-{id}")))
         .maybe_causation_id(Some(format!("cau-{id}")))
         .maybe_actor_type(Some("user".into()))
@@ -781,7 +781,7 @@ fn create_withdraw(
         .actor_id("u-1".into())
         .occurred_at(chrono::Utc::now())
         .payload(payload)
-        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
+        .context(serde_json::to_value(&event_context).expect("serialize EventContext"))
         .build()
 }
 
@@ -906,7 +906,7 @@ async fn main() -> AnyResult<()> {
     };
 
     let new_envelope: EventEnvelope<BankAccount> =
-        EventEnvelope::new(&account_id, new_event, BusinessContext::default());
+        EventEnvelope::new(&account_id, new_event, EventContext::default());
 
     let serialized = serialize_events(&[new_envelope])?;
     println!(

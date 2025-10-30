@@ -2,7 +2,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
-use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::domain_event::{EventContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
@@ -162,7 +162,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     root.execute(
         &id,
         vec![Cmd::Deposit { amount: 1000 }, Cmd::Withdraw { amount: 300 }],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
 
@@ -185,7 +185,7 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     }];
     let envs: Vec<EventEnvelope<BankAccount>> = evs
         .into_iter()
-        .map(|e| EventEnvelope::new(&id, e, BusinessContext::default()))
+        .map(|e| EventEnvelope::new(&id, e, EventContext::default()))
         .collect();
     let ser = serialize_events(&envs).unwrap();
     event_repo.save(ser).await?;

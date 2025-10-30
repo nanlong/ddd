@@ -32,7 +32,7 @@ pub trait Aggregate: Entity + Default + Serialize + DeserializeOwned + Send + Sy
 mod tests {
     use super::Aggregate;
     use crate::domain_event::EventEnvelope;
-    use crate::domain_event::{BusinessContext, DomainEvent};
+    use crate::domain_event::{DomainEvent, EventContext};
     use crate::entity::Entity;
     use crate::error::DomainError;
     use ddd_macros::{domain_event, entity};
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(agg3.value, 4);
 
         // 事件信封封装（用于持久化前）
-        let ctx = BusinessContext::default();
+        let ctx = EventContext::default();
         let envelopes: Vec<EventEnvelope<Counter>> = vec![EventEnvelope::new(
             agg3.id(),
             CounterEvent::Added {

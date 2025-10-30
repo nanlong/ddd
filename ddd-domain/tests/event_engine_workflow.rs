@@ -1,6 +1,6 @@
 use anyhow::Result as AnyResult;
 use chrono::Utc;
-use ddd_domain::domain_event::BusinessContext;
+use ddd_domain::domain_event::EventContext;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::eventing::{
     EventBus, EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer,
@@ -131,7 +131,7 @@ impl EventHandler for FlakyHandler {
 }
 
 fn mk_event(id: &str, ty: &str) -> SerializedEvent {
-    let biz = BusinessContext::builder()
+    let event_context = EventContext::builder()
         .maybe_correlation_id(Some(format!("cor-{id}")))
         .maybe_causation_id(Some(format!("cau-{id}")))
         .maybe_actor_type(Some("user".into()))
@@ -151,7 +151,7 @@ fn mk_event(id: &str, ty: &str) -> SerializedEvent {
         .actor_id("u-1".into())
         .occurred_at(Utc::now())
         .payload(serde_json::json!({"id": id}))
-        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
+        .context(serde_json::to_value(&event_context).expect("serialize EventContext"))
         .build()
 }
 

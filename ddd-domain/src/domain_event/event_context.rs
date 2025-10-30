@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// 业务上下文信息
 #[derive(Builder, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct BusinessContext {
+pub struct EventContext {
     /// 关联ID
     correlation_id: Option<String>,
     /// 因果ID
@@ -14,9 +14,12 @@ pub struct BusinessContext {
     actor_type: Option<String>,
     /// 触发事件的主体ID
     actor_id: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extensions: Option<serde_json::Value>,
 }
 
-impl BusinessContext {
+impl EventContext {
     pub fn correlation_id(&self) -> Option<&str> {
         self.correlation_id.as_deref()
     }
@@ -35,5 +38,9 @@ impl BusinessContext {
 
     pub fn actor_id(&self) -> Option<&str> {
         self.actor_id.as_deref()
+    }
+
+    pub fn extensions(&self) -> Option<&serde_json::Value> {
+        self.extensions.as_ref()
     }
 }

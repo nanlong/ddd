@@ -5,7 +5,7 @@
 //!
 use crate::{
     aggregate::Aggregate,
-    domain_event::{BusinessContext, EventEnvelope},
+    domain_event::{EventContext, EventEnvelope},
     persist::AggregateRepository,
 };
 use std::marker::PhantomData;
@@ -45,7 +45,7 @@ where
         &self,
         aggregate_id: &A::Id,
         commands: Vec<A::Command>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         // 如果不存在则创建新的聚合实例
         let mut aggregate = self

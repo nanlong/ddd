@@ -5,7 +5,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
-use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::domain_event::{EventContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::EventUpcasterChain;
@@ -480,7 +480,7 @@ where
         &self,
         aggregate: &OrderAggregate,
         events: Vec<OrderEvent>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<OrderAggregate>>, DomainError> {
         let envelopes: Vec<EventEnvelope<OrderAggregate>> = events
             .into_iter()
@@ -529,7 +529,7 @@ async fn main() -> AnyResult<()> {
                 quantity,
                 price,
             }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await?;
         println!(
@@ -546,7 +546,7 @@ async fn main() -> AnyResult<()> {
         vec![OrderCommand::RemoveItem {
             product_id: "product-C".to_string(),
         }],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
     println!("✅ 移除商品: product-C");
@@ -561,17 +561,13 @@ async fn main() -> AnyResult<()> {
     root.execute(
         &order_id,
         vec![OrderCommand::Confirm],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
     println!("✅ 确认订单");
 
-    root.execute(
-        &order_id,
-        vec![OrderCommand::Pay],
-        BusinessContext::default(),
-    )
-    .await?;
+    root.execute(&order_id, vec![OrderCommand::Pay], EventContext::default())
+        .await?;
     println!("✅ 支付订单");
 
     // 保存第二个快照
@@ -579,12 +575,8 @@ async fn main() -> AnyResult<()> {
     snapshot_repo.save(&order).await?;
     println!("\n📸 保存快照 v{}", order.version());
 
-    root.execute(
-        &order_id,
-        vec![OrderCommand::Ship],
-        BusinessContext::default(),
-    )
-    .await?;
+    root.execute(&order_id, vec![OrderCommand::Ship], EventContext::default())
+        .await?;
     println!("✅ 发货订单");
 
     // 保存第三个快照
@@ -595,7 +587,7 @@ async fn main() -> AnyResult<()> {
     root.execute(
         &order_id,
         vec![OrderCommand::Deliver],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
     println!("✅ 签收订单");
@@ -662,7 +654,7 @@ async fn main() -> AnyResult<()> {
             quantity: 1,
             price: 100,
         }],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
     println!("✅ 创建订单 order-002 并添加商品");
@@ -670,7 +662,7 @@ async fn main() -> AnyResult<()> {
     root.execute(
         &order_id_2,
         vec![OrderCommand::Cancel],
-        BusinessContext::default(),
+        EventContext::default(),
     )
     .await?;
     println!("✅ 取消订单 order-002");

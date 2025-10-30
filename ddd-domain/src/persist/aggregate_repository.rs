@@ -7,7 +7,7 @@ use crate::error::DomainError;
 use crate::persist::SnapshotRepositoryWithPolicy;
 use crate::{
     aggregate::Aggregate,
-    domain_event::{BusinessContext, EventEnvelope},
+    domain_event::{EventContext, EventEnvelope},
     event_upcaster::EventUpcasterChain,
     persist::{EventRepository, SnapshotRepository, deserialize_events, serialize_events},
 };
@@ -25,7 +25,7 @@ where
         &self,
         aggregate: &A,
         events: Vec<A::Event>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error>;
 }
 
@@ -43,7 +43,7 @@ where
         &self,
         aggregate: &A,
         events: Vec<A::Event>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         (**self).save(aggregate, events, context).await
     }
@@ -115,7 +115,7 @@ where
         &self,
         aggregate: &A,
         events: Vec<A::Event>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         let envelopes: Vec<EventEnvelope<A>> = events
             .into_iter()
@@ -206,7 +206,7 @@ where
         &self,
         aggregate: &A,
         events: Vec<A::Event>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<A>>, A::Error> {
         let event_sourced_repo = EventSourcedRepo::new(
             Arc::clone(&self.event_repo),

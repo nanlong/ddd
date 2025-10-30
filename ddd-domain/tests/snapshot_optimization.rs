@@ -2,7 +2,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use chrono::Utc;
 use ddd_domain::aggregate::Aggregate;
-use ddd_domain::domain_event::BusinessContext;
+use ddd_domain::domain_event::EventContext;
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
@@ -132,7 +132,7 @@ impl SnapshotRepository for InMemorySnapshotPolicyRepo {
 fn mk_incr(id: &str, version: usize, by: i64) -> SerializedEvent {
     let eid = ulid::Ulid::new().to_string();
     let payload = serde_json::json!({"Incr": {"id": eid, "aggregate_version": version, "by": by }});
-    let biz = BusinessContext::builder()
+    let event_context = EventContext::builder()
         .maybe_correlation_id(Some(format!("cor-{id}")))
         .maybe_causation_id(Some(format!("cau-{id}")))
         .maybe_actor_type(Some("user".into()))
@@ -153,7 +153,7 @@ fn mk_incr(id: &str, version: usize, by: i64) -> SerializedEvent {
         .actor_id("u-1".into())
         .occurred_at(Utc::now())
         .payload(payload)
-        .context(serde_json::to_value(&biz).expect("serialize BusinessContext"))
+        .context(serde_json::to_value(&event_context).expect("serialize EventContext"))
         .build()
 }
 

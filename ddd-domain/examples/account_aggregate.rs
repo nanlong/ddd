@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
-use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::domain_event::{EventContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
@@ -209,7 +209,7 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
         &self,
         aggregate: &Account,
         events: Vec<AccountEvent>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<Account>>, DomainError> {
         // 先封装事件
         let envelopes: Vec<EventEnvelope<Account>> = events
@@ -263,7 +263,7 @@ async fn main() {
             vec![AccountCommand::Open {
                 initial_balance: 1000,
             }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await
         .unwrap();
@@ -275,7 +275,7 @@ async fn main() {
         .execute(
             &id,
             vec![AccountCommand::Deposit { amount: 500 }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await
         .unwrap();
@@ -287,7 +287,7 @@ async fn main() {
         .execute(
             &id,
             vec![AccountCommand::Withdraw { amount: 200 }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await
         .unwrap();

@@ -5,7 +5,7 @@
 //!
 use crate::{
     aggregate::Aggregate,
-    domain_event::{BusinessContext, DomainEvent, EventEnvelope, Metadata},
+    domain_event::{DomainEvent, EventContext, EventEnvelope, Metadata},
     error::{DomainError, DomainResult},
     event_upcaster::EventUpcasterChain,
 };
@@ -145,7 +145,7 @@ where
 
         let payload: A::Event = serde_json::from_value(value.payload.clone())?;
 
-        let context: BusinessContext = serde_json::from_value(value.context.clone())?;
+        let context: EventContext = serde_json::from_value(value.context.clone())?;
 
         Ok(EventEnvelope {
             metadata,

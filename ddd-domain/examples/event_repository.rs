@@ -4,7 +4,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
-use ddd_domain::domain_event::{BusinessContext, EventEnvelope};
+use ddd_domain::domain_event::{EventContext, EventEnvelope};
 use ddd_domain::entity::Entity;
 use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::event_upcaster::EventUpcasterChain;
@@ -269,7 +269,7 @@ where
         &self,
         aggregate: &BankAccount,
         events: Vec<BankAccountEvent>,
-        context: BusinessContext,
+        context: EventContext,
     ) -> Result<Vec<EventEnvelope<BankAccount>>, DomainError> {
         let envelopes: Vec<EventEnvelope<BankAccount>> = events
             .into_iter()
@@ -304,7 +304,7 @@ async fn main() -> AnyResult<()> {
         .execute(
             &account_id,
             vec![BankAccountCommand::Deposit { amount: 1000 }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await?;
     println!("✅ 存款 +1000, 产生 {} 个事件", events.len());
@@ -314,7 +314,7 @@ async fn main() -> AnyResult<()> {
         .execute(
             &account_id,
             vec![BankAccountCommand::Withdraw { amount: 300 }],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await?;
     println!("✅ 取款 -300, 产生 {} 个事件", events.len());
@@ -324,7 +324,7 @@ async fn main() -> AnyResult<()> {
         .execute(
             &account_id,
             vec![BankAccountCommand::Lock],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await?;
     println!("✅ 锁定账户, 产生 {} 个事件", events.len());
@@ -334,7 +334,7 @@ async fn main() -> AnyResult<()> {
         .execute(
             &account_id,
             vec![BankAccountCommand::Unlock],
-            BusinessContext::default(),
+            EventContext::default(),
         )
         .await?;
     println!("✅ 解锁账户, 产生 {} 个事件\n", events.len());

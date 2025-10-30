@@ -4,7 +4,7 @@ use ddd_application::command_bus::CommandBus;
 use ddd_application::command_handler::CommandHandler;
 use ddd_application::context::AppContext;
 use ddd_application::error::AppError;
-use ddd_domain::domain_event::BusinessContext;
+use ddd_domain::domain_event::EventContext;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     bus.register::<DeleteUser, _>(Arc::new(DeleteUserHandler))?;
 
     let ctx = AppContext {
-        biz: BusinessContext::builder()
+        event_context: EventContext::builder()
             .maybe_correlation_id(Some("cor-1".into()))
             .maybe_causation_id(Some("cau-1".into()))
             .maybe_actor_type(Some("user".into()))

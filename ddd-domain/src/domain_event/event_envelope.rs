@@ -1,7 +1,7 @@
 use crate::aggregate::Aggregate;
 use chrono::Utc;
 
-use super::business_context::BusinessContext;
+use super::event_context::EventContext;
 use super::metadata::Metadata;
 
 /// 事件信封，包含事件载荷、元数据与业务上下文
@@ -12,14 +12,14 @@ where
 {
     pub metadata: Metadata,
     pub payload: A::Event,
-    pub context: BusinessContext,
+    pub context: EventContext,
 }
 
 impl<A> EventEnvelope<A>
 where
     A: Aggregate,
 {
-    pub fn new(aggregate_id: &A::Id, payload: A::Event, context: BusinessContext) -> Self {
+    pub fn new(aggregate_id: &A::Id, payload: A::Event, context: EventContext) -> Self {
         let metadata = Metadata::builder()
             .aggregate_id(aggregate_id.to_string())
             .aggregate_type(A::TYPE.to_string())
