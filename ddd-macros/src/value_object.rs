@@ -7,7 +7,7 @@ use syn::{Item, Result, Token, parse::Parse, parse::ParseStream, parse_macro_inp
 
 /// #[value_object] 宏实现
 /// - 支持结构体（具名或 tuple）与枚举
-/// - 合并/追加派生：Default, Clone, (Debug 可控), Serialize, Deserialize, PartialEq, Eq, Hash
+/// - 合并/追加派生：Default, Clone, (Debug 可控), Serialize, Deserialize, PartialEq, Eq
 /// - 参数：`#[value_object(debug = true|false)]`，默认 true
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cfg = parse_macro_input!(attr as ValueObjectAttrConfig);
@@ -21,7 +21,6 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::parse_quote!(serde::Deserialize),
         syn::parse_quote!(PartialEq),
         syn::parse_quote!(Eq),
-        syn::parse_quote!(Hash),
     ];
 
     if cfg.derive_debug.unwrap_or(true) {

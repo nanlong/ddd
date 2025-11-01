@@ -2,7 +2,7 @@
 
 一个面向 DDD 的轻量级工作区，聚焦“过程宏 → 领域层 → 应用层”的清晰分层与组合方式。
 
-- `ddd-macros`：过程宏，生成实体/实体ID/领域事件样板（减少重复，统一约定）。
+- `ddd-macros`：过程宏，生成实体/实体ID/值对象/领域事件样板（减少重复，统一约定）。
 - `ddd-domain`：领域层，聚合/事件/上抬链/仓储与事件引擎等抽象与通用实现。
 - `ddd-application`：应用层，命令/查询、处理器与总线（内存实现）与上下文。
 
@@ -61,6 +61,7 @@ serde = { version = "1", features = ["derive"] }
 - `#[entity_id]`：单字段 tuple struct → 自动派生 + `FromStr`/`Display`/`AsRef` 等便捷实现。
 - `#[domain_event(id = IdType, version = N)]`：具名字段枚举变体 → 追加 `id`/`aggregate_version` 字段并实现 `DomainEvent`；
   - 变体级覆写：`#[event(event_type = "...", event_version = N)]`。
+- `#[value_object(debug = true|false)]`：作用于结构体/枚举，仅合并并追加常用派生；`debug` 默认 `true`，关闭后可自定义 `Debug`；枚举如启用 `Default` 需在某变体标注 `#[default]`。
 
 示例：
 
@@ -92,6 +93,7 @@ enum UserEvent {
   - `#[entity]`：`Debug`（可用 `#[entity(debug = false)]` 关闭）, `Default`, `serde::Serialize`, `serde::Deserialize`
   - `#[entity_id]`：`Default`, `Clone`, `Debug`, `serde::Serialize`, `serde::Deserialize`, `PartialEq`, `Eq`, `Hash`
   - `#[domain_event]`：`Debug`, `Clone`, `PartialEq`, `serde::Serialize`, `serde::Deserialize`
+  - `#[value_object]`：`Default`, `Clone`, `Debug`, `serde::Serialize`, `serde::Deserialize`, `PartialEq`, `Eq`
 - `#[entity]` 会将 `id`/`version` 放在结构体字段最前，并生成 `new/id/version` 实现。
 - `#[domain_event]` 会为每个变体补全 `id`/`aggregate_version`，并实现 `DomainEvent` 的访问器方法。
 

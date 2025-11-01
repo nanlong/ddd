@@ -9,7 +9,7 @@
 - `#[entity]` 默认追加 `#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]`（可用 `debug = false` 关闭）
 - `#[entity_id]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`（可用 `debug = false` 关闭）
 - `#[domain_event]` 默认追加 `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`
-- `#[value_object]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`（可用 `debug = false` 关闭）
+- `#[value_object]` 默认追加 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]`（可用 `debug = false` 关闭）
 
 说明：宏会与已有 `derive` 合并并去重（对 `Serialize`/`Deserialize` 统一为 `serde::...` 以避免重复）。
 
@@ -84,11 +84,13 @@ enum FooEvent {
 
 作用于结构体（具名或 tuple）与枚举：
 
-- 自动合成并合并 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]`；
+- 自动合成并合并 `#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]`；
 - 可通过参数 `debug = false` 禁止自动派生 `Debug`，便于手写自定义 `Debug` 实现；
 - 不改变已有字段/变体，仅做派生合并；
 - 与已有 `derive` 合并并去重；
 - 若目标为枚举且启用 `Default`，需在某个变体上标注 `#[default]`（否则编译器会提示缺失默认变体）。
+
+
 
 语法：
 
