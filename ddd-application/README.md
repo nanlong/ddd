@@ -4,11 +4,11 @@
 
 ## 核心组件
 
-- 命令/查询：任意 `Send + 'static` 的类型即可，不再需要实现 `Command`/`Query` trait；路由依据 `TypeId`。
-- `AppContext`：横切上下文：`BusinessContext`（correlation/causation/actor_*）与 `idempotency_key`。
+- 命令/查询：任意 `Send + 'static` 的类型；路由依据 `TypeId`。
+- `AppContext`：横切上下文：`EventContext`（correlation/causation/actor_*）与 `idempotency_key`。
 - `CommandHandler<C>` / `QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `R`（若需要“可能不存在”，可令 `R = Option<T>` 或以领域层 `NotFound` 表达）。
 - `CommandBus` / `QueryBus`：按类型分发；当前提供内存实现：`InMemoryCommandBus`、`InMemoryQueryBus`。
-- `AppError`：`Domain`、`Validation`、`Authorization`、`Infra`、`HandlerNotFound`、`AlreadyRegistered`、`TypeMismatch`。
+- `AppError`：`Domain`、`Validation`、`Authorization`、`Infra`、`HandlerNotFound`、`AggregateNotFound`、`AlreadyRegistered`、`TypeMismatch`。
 
 ## 内存总线（InMemory*）
 
@@ -24,6 +24,7 @@
  use ddd_application::command_handler::CommandHandler;
  use ddd_application::context::AppContext;
  use ddd_application::InMemoryCommandBus;
+ use std::sync::Arc;
 
 #[derive(Debug)]
 struct CreateUser {
@@ -46,7 +47,7 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
  #[tokio::main]
  async fn main() {
      let bus = InMemoryCommandBus::new();
-     bus.register::<CreateUser, _>(std::sync::Arc::new(CreateUserHandler)).unwrap();
+     bus.register::<CreateUser, _>(Arc::new(CreateUserHandler)).unwrap();
 
     let _ = bus
         .dispatch(&AppContext::default(), CreateUser { name: "Alice".into() })
@@ -63,6 +64,7 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
  use ddd_application::query_handler::QueryHandler;
  use ddd_application::InMemoryQueryBus;
  use serde::Serialize;
+ use std::sync::Arc;
 
 #[derive(Debug)]
 struct GetUser {
@@ -95,7 +97,7 @@ struct UserDto {
  #[tokio::main]
  async fn main() {
      let bus = InMemoryQueryBus::new();
-     bus.register::<GetUser, UserDto, _>(std::sync::Arc::new(GetUserHandler)).unwrap();
+     bus.register::<GetUser, UserDto, _>(Arc::new(GetUserHandler)).unwrap();
 
      let _ = bus
          .dispatch::<GetUser, UserDto>(&AppContext::default(), GetUser { id: 1 })

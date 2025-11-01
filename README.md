@@ -59,13 +59,13 @@ serde = { version = "1", features = ["derive"] }
 
 - `#[entity(id = IdType)]`：具名字段结构体 → 追加 `id: IdType`、`version: usize`，实现 `Entity`。
 - `#[entity_id]`：单字段 tuple struct → 自动派生 + `FromStr`/`Display`/`AsRef` 等便捷实现。
-- `#[event(id = IdType, version = N)]`：具名字段枚举变体 → 追加 `id`/`aggregate_version` 字段并实现 `DomainEvent`；
-  - 变体级覆写：`#[event(event_type = "...", event_version = N)]`（不再支持旧的 `#[event_type]`/`#[event_version]`）。
+- `#[domain_event(id = IdType, version = N)]`：具名字段枚举变体 → 追加 `id`/`aggregate_version` 字段并实现 `DomainEvent`；
+  - 变体级覆写：`#[event(event_type = "...", event_version = N)]`。
 
 示例：
 
 ```rust
-use ddd_macros::{entity, entity_id, event};
+use ddd_macros::{entity, entity_id, domain_event};
 
 #[entity_id]
 struct UserId(String);
@@ -76,7 +76,7 @@ struct UserProfile {
     nickname: String,
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Clone, PartialEq)]
 enum UserEvent {
     #[event(event_type = "user.created")]
@@ -104,7 +104,7 @@ UI 测试：`cargo test -p ddd-macros`
 模块与职责：
 
 - `aggregate` / `entity`：聚合与实体基础抽象（聚合含 `TYPE`、`Command/Event/Error`，以及 `execute/apply`）。
-- `domain_event`：`DomainEvent`、`EventEnvelope`、`AggregateEvents` 与 `BusinessContext/Metadata`。
+- `domain_event`：`DomainEvent`、`EventEnvelope`、`AggregateEvents` 与 `EventContext/Metadata`。
 - `event_upcaster`：事件上抬（版本升级）接口与上抬链 `EventUpcasterChain`。
 - `persist`：
   - 仓储协议：`EventRepository`、`SnapshotRepository`；
@@ -119,7 +119,7 @@ UI 测试：`cargo test -p ddd-macros`
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::entity::Entity;
 use ddd_domain::error::DomainError;
-use ddd_macros::{entity, entity_id, event};
+use ddd_macros::{entity, entity_id, domain_event};
 use ulid::Ulid;
 
 #[entity_id]
@@ -137,7 +137,7 @@ enum Command {
     Withdraw(i64),
 }
 
-#[event(version = 1)]
+#[domain_event(version = 1)]
 #[derive(Clone, PartialEq)]
 enum Evt {
     #[event(event_type = "account.deposited")]
@@ -199,7 +199,7 @@ impl Aggregate for BankAccount {
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;
 use ddd_domain::aggregate_root::AggregateRoot;
-use ddd_domain::domain_event::BusinessContext;
+use ddd_domain::domain_event::EventContext;
 use ddd_domain::event_upcaster::EventUpcasterChain;
 use ddd_domain::persist::{AggregateRepository, EventRepository, EventSourcedRepo, SnapshotPolicy, SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy, SerializedEvent};
 use std::collections::HashMap;
@@ -215,14 +215,15 @@ struct InMemEvents {
 impl EventRepository for InMemEvents {
     async fn get_events<A: Aggregate>(
         &self,
-        id: &str,
+        id: &A::Id,
     ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        let key = id.to_string();
         Ok(
             self
                 .store
                 .lock()
                 .unwrap()
-                .get(id)
+                .get(&key)
                 .cloned()
                 .unwrap_or_default(),
         )
@@ -230,15 +231,16 @@ impl EventRepository for InMemEvents {
 
     async fn get_last_events<A: Aggregate>(
         &self,
-        id: &str,
+        id: &A::Id,
         ver: usize,
     ) -> ddd_domain::error::DomainResult<Vec<SerializedEvent>> {
+        let key = id.to_string();
         Ok(
             self
                 .store
                 .lock()
                 .unwrap()
-                .get(id)
+                .get(&key)
                 .map(|xs| {
                     xs.iter()
                         .filter(|e| e.aggregate_version() > ver)
@@ -285,8 +287,8 @@ async fn main() -> anyhow::Result<()> {
     root_es
         .execute(
             &id,
-            Command::Deposit(100),
-            BusinessContext::default(),
+            vec![Command::Deposit(100)],
+            EventContext::default(),
         )
         .await?;
     Ok(())
@@ -298,7 +300,7 @@ struct DummySnapshotRepo;
 impl SnapshotRepository for DummySnapshotRepo {
     async fn get_snapshot<A: Aggregate>(
         &self,
-        _id: &str,
+        _id: &A::Id,
         _ver: Option<usize>,
     ) -> ddd_domain::error::DomainResult<
         Option<ddd_domain::persist::SerializedSnapshot>,
@@ -322,11 +324,11 @@ impl SnapshotRepository for DummySnapshotRepo {
 
 核心组件：
 
-- 命令/查询：可使用任意 `Send + Sync + 'static` 的自定义类型，不再要求实现 `Command`/`Query` trait；路由按类型 `TypeId` 完成。
-- `CommandHandler<C>`/`QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `Option<R>`。
+- 命令/查询：类型需满足 `Send + 'static`，路由依据 `TypeId`。
+- `CommandHandler<C>`/`QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `R`（若需要“可能不存在”，可令 `R = Option<T>`）。
 - `CommandBus`/`QueryBus`：按类型分发；提供内存实现 `InMemoryCommandBus`/`InMemoryQueryBus`。
-- `AppContext`：横切上下文（`BusinessContext`、幂等键）。
-- `AppError`：统一错误（含 `Domain`、`NotFound`、`TypeMismatch` 等）。
+- `AppContext`：横切上下文（`EventContext`、幂等键）。
+- `AppError`：统一错误（含 `Domain`、`HandlerNotFound`、`AggregateNotFound`、`TypeMismatch` 等）。
 
 示例（命令）：
 
@@ -336,6 +338,7 @@ use ddd_application::command_bus::CommandBus;
 use ddd_application::command_handler::CommandHandler;
 use ddd_application::context::AppContext;
 use ddd_application::InMemoryCommandBus;
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct CreateUser {
@@ -350,7 +353,7 @@ impl CommandHandler<CreateUser> for CreateUserHandler {
 #[tokio::main]
 async fn main() {
     let bus = InMemoryCommandBus::new();
-    bus.register::<CreateUser, _>(std::sync::Arc::new(CreateUserHandler));
+    bus.register::<CreateUser, _>(Arc::new(CreateUserHandler)).unwrap();
     let _ = bus
         .dispatch(&AppContext::default(), CreateUser { name: "Alice".into() })
         .await;
@@ -366,6 +369,7 @@ use ddd_application::query_bus::QueryBus;
 use ddd_application::query_handler::QueryHandler;
 use ddd_application::InMemoryQueryBus;
 use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct GetUser {
@@ -381,15 +385,15 @@ struct UserDto {
 struct GetUserHandler;
 #[async_trait]
 impl QueryHandler<GetUser, UserDto> for GetUserHandler {
-    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<Option<UserDto>, ddd_application::error::AppError> {
-        Ok(Some(UserDto { id: q.id, name: "Alice".into() }))
+    async fn handle(&self, _ctx: &AppContext, q: GetUser) -> Result<UserDto, ddd_application::error::AppError> {
+        Ok(UserDto { id: q.id, name: "Alice".into() })
     }
 }
 
 #[tokio::main]
 async fn main() {
     let bus = InMemoryQueryBus::new();
-    bus.register::<GetUser, UserDto, _>(std::sync::Arc::new(GetUserHandler));
+    bus.register::<GetUser, UserDto, _>(Arc::new(GetUserHandler)).unwrap();
     let _ = bus
         .dispatch::<GetUser, UserDto>(&AppContext::default(), GetUser { id: 1 })
         .await;
@@ -401,7 +405,7 @@ async fn main() {
 ```rust
 use async_trait::async_trait;
 use ddd_application::{command_handler::CommandHandler, context::AppContext, error::AppError};
-use ddd_domain::{aggregate::Aggregate, aggregate_root::AggregateRoot, domain_event::BusinessContext, persist::AggregateRepository};
+use ddd_domain::{aggregate::Aggregate, aggregate_root::AggregateRoot, domain_event::EventContext, persist::AggregateRepository};
 
 // 假设已有 BankAccount 聚合与仓储实现（见上文领域层部分）
 
@@ -426,7 +430,7 @@ where
 {
     async fn handle(&self, _ctx: &AppContext, cmd: Deposit) -> Result<(), AppError> {
         self.root
-            .execute(&cmd.id, Command::Deposit(cmd.amount), BusinessContext::default())
+            .execute(&cmd.id, vec![Command::Deposit(cmd.amount)], EventContext::default())
             .await?;
         Ok(())
     }
@@ -436,7 +440,7 @@ where
 并发与错误模型：
 
 - 内存总线基于 `DashMap`，在分发前克隆 `Arc` 闭包避免跨 `await` 持锁；测试覆盖 100 次并发分发。
-- `AppError::NotFound(name)`：未注册处理器（使用类型名 `type_name::<T>()` 标识）。
+- `AppError::HandlerNotFound(name)`：未注册处理器（使用类型名 `type_name::<T>()` 标识）。
 - `AppError::TypeMismatch`：在注册表被意外覆盖或类型还原失败时触发（保护性错误）。
 
 ---

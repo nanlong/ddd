@@ -10,7 +10,7 @@
 - `DomainEvent`
   - 事件 ID、类型、版本、聚合版本等元信息
 - `EventEnvelope<A>` / `AggregateEvents<A>`
-  - 携带 `Metadata` 与 `BusinessContext`（correlation/causation/actor_*）
+  - 携带 `Metadata` 与 `EventContext`（correlation/causation/actor_*）
 - `persist::*`
   - 事件/快照序列化模型与仓储接口（`EventRepository`、`SnapshotRepository` 等）
   - 通用聚合仓储实现：
@@ -34,7 +34,7 @@
 extern crate self as ddd_domain;
 ```
 
-## 仓储实现（最新命名）
+## 仓储实现
 
 持久化模块导出以下类型与约定（自 `ddd_domain::persist`）：
 

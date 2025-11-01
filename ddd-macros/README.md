@@ -66,7 +66,7 @@ struct Foo {
 语法：
 
 ```rust
-#[event(id = IdType, version = 1)]
+#[domain_event(id = IdType, version = 1)]
 enum FooEvent {
     // 变体级覆盖：
     #[event(event_type = "FooEvent.Created", event_version = 2)]
@@ -78,7 +78,7 @@ enum FooEvent {
 }
 ```
 
-注意：不再支持旧语法 `#[event_type]` / `#[event_version]` 作为独立属性；请使用统一的 `#[event(event_type = ..., event_version = ...)]` 形式在变体级覆写。
+变体级覆写统一使用 `#[event(event_type = ..., event_version = ...)]` 形式。
 
 ## `#[value_object]`
 
