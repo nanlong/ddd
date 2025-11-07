@@ -8,7 +8,7 @@
 - `AppContext`：横切上下文：`EventContext`（correlation/causation/actor_*）与 `idempotency_key`。
 - `CommandHandler<C>` / `QueryHandler<Q, R>`：处理具体类型的命令/查询；查询返回 `R`（若需要“可能不存在”，可令 `R = Option<T>` 或以领域层 `NotFound` 表达）。
 - `CommandBus` / `QueryBus`：按类型分发；当前提供内存实现：`InMemoryCommandBus`、`InMemoryQueryBus`。
-- `AppError`：`Domain`、`Validation`、`Authorization`、`Infra`、`HandlerNotFound`、`AggregateNotFound`、`AlreadyRegistered`、`TypeMismatch`。
+- `AppError`：`Domain`、`Validation`、`Authorization`、`Infra`、`HandlerNotFound`、`AggregateNotFound`、`AlreadyRegisteredCommand`、`AlreadyRegisteredQuery`、`TypeMismatch`。
 
 ## 内存总线（InMemory*）
 
@@ -118,5 +118,3 @@ cargo test  -p ddd-application
  cargo run   -p ddd-application --example inmemory_command_bus
  cargo run   -p ddd-application --example inmemory_query_bus
  ```
-
- 

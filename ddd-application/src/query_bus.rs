@@ -13,4 +13,21 @@ pub trait QueryBus: Send + Sync {
     where
         Q: Send + 'static,
         R: Send + 'static;
+
+    /// 批量分发查询，按顺序返回结果列表
+    async fn dispatch_batch<Q, R>(
+        &self,
+        ctx: &AppContext,
+        queries: Vec<Q>,
+    ) -> Result<Vec<R>, AppError>
+    where
+        Q: Send + 'static,
+        R: Send + 'static,
+    {
+        let mut out = Vec::with_capacity(queries.len());
+        for q in queries {
+            out.push(self.dispatch::<Q, R>(ctx, q).await?);
+        }
+        Ok(out)
+    }
 }

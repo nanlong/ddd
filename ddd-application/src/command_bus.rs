@@ -15,4 +15,15 @@ pub trait CommandBus: Send + Sync {
     async fn dispatch<C>(&self, ctx: &AppContext, cmd: C) -> Result<(), AppError>
     where
         C: Send + 'static;
+
+    /// 批量分发命令
+    async fn dispatch_batch<C>(&self, ctx: &AppContext, cmds: Vec<C>) -> Result<(), AppError>
+    where
+        C: Send + 'static,
+    {
+        for cmd in cmds {
+            self.dispatch(ctx, cmd).await?;
+        }
+        Ok(())
+    }
 }

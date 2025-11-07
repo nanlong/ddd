@@ -1,5 +1,6 @@
 use ddd_domain::error::DomainError;
 
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
     #[error("domain: {0}")]
@@ -20,8 +21,14 @@ pub enum AppError {
     #[error("aggregate not found: {0}")]
     AggregateNotFound(String),
 
-    #[error("handler already registered: {0}")]
-    AlreadyRegistered(&'static str),
+    #[error("handler already registered: command={command}")]
+    AlreadyRegisteredCommand { command: &'static str },
+
+    #[error("handler already registered: query={query}, result={result}")]
+    AlreadyRegisteredQuery {
+        query: &'static str,
+        result: &'static str,
+    },
 
     #[error("type mismatch: expected={expected}, found={found}")]
     TypeMismatch {

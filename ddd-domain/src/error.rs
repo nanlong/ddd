@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 /// 统一错误类型（基础库最小必要集）
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum DomainError {
     // --- 序列化/事件上抬 ---

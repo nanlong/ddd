@@ -68,7 +68,10 @@ impl InMemoryQueryBus {
         };
 
         if self.handlers.contains_key(&key) {
-            return Err(AppError::AlreadyRegistered(type_name::<Q>()));
+            return Err(AppError::AlreadyRegisteredQuery {
+                query: type_name::<Q>(),
+                result: type_name::<R>(),
+            });
         }
 
         self.handlers.insert(key, (type_name::<Q>(), f));

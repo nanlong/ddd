@@ -19,7 +19,7 @@ pub trait Aggregate: Entity + Default + Serialize + DeserializeOwned + Send + Sy
     /// 该聚合产生的领域事件类型
     type Event: DomainEvent;
     /// 命令执行或持久化环节的错误类型
-    type Error: Error;
+    type Error: Error + Send + Sync + 'static;
 
     /// 执行命令，返回产生的事件列表
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error>;

@@ -65,7 +65,9 @@ impl InMemoryCommandBus {
         };
 
         if self.handlers.contains_key(&key) {
-            return Err(AppError::AlreadyRegistered(type_name::<C>()));
+            return Err(AppError::AlreadyRegisteredCommand {
+                command: type_name::<C>(),
+            });
         }
 
         self.handlers.insert(key, (type_name::<C>(), f));

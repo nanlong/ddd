@@ -4,7 +4,7 @@ use std::fmt;
 
 /// 领域事件载荷需要满足的通用能力边界
 pub trait DomainEvent:
-    Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync
+    Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync + 'static
 {
     /// 事件唯一标识
     fn event_id(&self) -> &str;
