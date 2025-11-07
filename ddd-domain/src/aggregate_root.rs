@@ -66,6 +66,10 @@ where
             Ok(acc)
         })?;
 
+        if events.is_empty() {
+            return Ok(vec![]);
+        }
+
         // 保存聚合状态和未提交的事件
         self.repo.save(&aggregate, events, context).await
     }
