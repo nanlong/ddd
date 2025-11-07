@@ -23,6 +23,7 @@ pub mod domain_service;
 pub mod entity;
 pub mod error;
 pub mod event_upcaster;
+#[cfg(feature = "eventing")]
 pub mod eventing;
 pub mod persist;
 pub mod specification;

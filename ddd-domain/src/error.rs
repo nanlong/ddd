@@ -68,6 +68,7 @@ pub type DomainResult<T> = Result<T, DomainError>;
 // ---- Cross-crate conversions for infrastructure convenience ----
 // 允许在基础设施层直接使用 `?` 将 sqlx/uuid 等错误转换为 DomainError
 
+#[cfg(feature = "infra-sqlx")]
 impl From<sqlx::Error> for DomainError {
     fn from(err: sqlx::Error) -> Self {
         match err {

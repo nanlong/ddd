@@ -1,3 +1,4 @@
+#![cfg(feature = "eventing")]
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use ddd_domain::aggregate::Aggregate;

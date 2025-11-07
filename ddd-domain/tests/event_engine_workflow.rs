@@ -1,3 +1,4 @@
+#![cfg(feature = "eventing")]
 use anyhow::Result as AnyResult;
 use chrono::Utc;
 use ddd_domain::domain_event::EventContext;
