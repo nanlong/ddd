@@ -1,6 +1,8 @@
 [workspace]
-members = ["ddd-application","ddd-domain", "ddd-macros"]
+members = ["ddd-application", "ddd-domain", "ddd-macros"]
 resolver = "2"
+
+[workspace.dependencies]
 
 [profile.dev]
 opt-level = 1
@@ -10,6 +12,3 @@ split-debuginfo = "unpacked"
 
 [profile.dev.package."*"]
 opt-level = 3
-
-
-[workspace.dependencies]

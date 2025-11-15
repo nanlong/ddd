@@ -10,11 +10,11 @@ license = "MIT OR Apache-2.0"
 default = ["eventing"]
 # 事件子系统（依赖 tokio/futures 等）
 eventing = [
-  "dep:tokio",
-  "dep:tokio-util",
-  "dep:tokio-stream",
-  "dep:futures-core",
-  "dep:futures-util",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tokio-stream",
+    "dep:futures-core",
+    "dep:futures-util",
 ]
 # 基础设施侧对 sqlx 的转换（领域层保持可选）
 infra-sqlx = ["dep:sqlx"]
@@ -23,27 +23,27 @@ infra-sqlx = ["dep:sqlx"]
 async-trait = { version = "0.1" }
 bon = { version = "3.7" }
 chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
 futures-core = { version = "0.3", features = ["alloc"], optional = true }
 futures-util = { version = "0.3", optional = true }
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"], optional = true }
-tokio-util = { version = "0.7", optional = true }
-tokio-stream = { version = "0.1", features = ["sync"], optional = true }
-thiserror = { version = "2.0" }
-uuid = { version = "1.11", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
 sqlx = { version = "0.8", features = [
   "postgres",
   "runtime-tokio",
   "uuid",
   "chrono",
 ], default-features = true, optional = true }
+thiserror = { version = "2.0" }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"], optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+tokio-util = { version = "0.7", optional = true }
+uuid = { version = "1.11", features = ["serde"] }
 
 [dev-dependencies]
-ddd-macros = { path = "../ddd-macros" }
-ulid = { version = "1.2", features = ["serde"] }
 anyhow = { version = "1.0" }
+ddd-macros = { path = "../ddd-macros" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
+ulid = { version = "1.2", features = ["serde"] }
 
 [[example]]
 name = "event_upcasting"
