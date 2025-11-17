@@ -3,7 +3,7 @@
 use anyhow::Result as AnyResult;
 use chrono::Utc;
 use ddd_domain::domain_event::EventContext;
-use ddd_domain::error::{DomainError, DomainResult};
+use ddd_domain::error::DomainResult;
 use ddd_domain::eventing::{
     EventDeliverer, EventEngine, EventEngineConfig, EventHandler, EventReclaimer, HandledEventType,
     InMemoryEventBus,
@@ -122,14 +122,11 @@ struct PrintHandler {
 
 #[async_trait::async_trait]
 impl EventHandler for PrintHandler {
-    async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
+    async fn handle(&self, event: &SerializedEvent) -> anyhow::Result<()> {
         if let Some(bad) = self.fail_on
             && event.event_type() == bad
         {
-            return Err(DomainError::EventHandler {
-                handler: self.name.to_string(),
-                reason: format!("{} failed on {}", self.name, bad),
-            });
+            anyhow::bail!("{} failed on {}", self.name, bad);
         }
         println!(
             "handler={} type={} aggregate={} payload={}",

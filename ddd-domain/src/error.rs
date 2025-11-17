@@ -60,6 +60,9 @@ pub enum DomainError {
     // --- 通用 ---
     #[error("invalid aggregate id: {0}")]
     InvalidAggregateId(String),
+
+    #[error("internal error: {0}")]
+    Internal(#[from] anyhow::Error),
 }
 
 /// 统一 Result 类型别名

@@ -50,6 +50,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut required: Vec<syn::Path> = vec![
         syn::parse_quote!(Default),
         syn::parse_quote!(Clone),
+        syn::parse_quote!(Copy),
         syn::parse_quote!(serde::Serialize),
         syn::parse_quote!(serde::Deserialize),
         syn::parse_quote!(PartialEq),

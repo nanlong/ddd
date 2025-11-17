@@ -20,6 +20,7 @@ eventing = [
 infra-sqlx = ["dep:sqlx"]
 
 [dependencies]
+anyhow = { version = "1.0" }
 async-trait = { version = "0.1" }
 bon = { version = "3.7" }
 chrono = { version = "0.4", features = ["serde"] }

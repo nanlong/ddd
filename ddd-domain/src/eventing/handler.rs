@@ -2,7 +2,7 @@
 //!
 //! 定义消费某类/多类/全部事件的处理逻辑与元信息（名称、订阅类型）。
 //!
-use crate::{error::DomainResult as Result, persist::SerializedEvent};
+use crate::persist::SerializedEvent;
 use async_trait::async_trait;
 
 #[derive(Clone, Debug)]
@@ -20,5 +20,5 @@ pub trait EventHandler: Send + Sync {
     /// 返回该处理器支持的事件类型
     fn handled_event_type(&self) -> HandledEventType;
     /// 处理事件
-    async fn handle(&self, event: &SerializedEvent) -> Result<()>;
+    async fn handle(&self, event: &SerializedEvent) -> anyhow::Result<()>;
 }

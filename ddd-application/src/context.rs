@@ -1,4 +1,4 @@
-use ddd_domain::domain_event::EventContext;
+use ddd_domain::{domain_event::EventContext, persist::SerializedEvent};
 
 /// 应用层上下文（Application Context）
 ///
@@ -28,4 +28,18 @@ pub struct AppContext {
     pub event_context: EventContext,
     /// 幂等键（可选）：为空则由上层或基础设施决定是否参与幂等
     pub idempotency_key: Option<String>,
+}
+
+impl From<&SerializedEvent> for AppContext {
+    fn from(event: &SerializedEvent) -> Self {
+        Self {
+            event_context: EventContext::builder()
+                .maybe_correlation_id(event.correlation_id().map(ToString::to_string))
+                .causation_id(event.event_id().to_string())
+                .maybe_actor_type(event.actor_type().map(ToString::to_string))
+                .maybe_actor_id(event.actor_id().map(ToString::to_string))
+                .build(),
+            idempotency_key: None,
+        }
+    }
 }

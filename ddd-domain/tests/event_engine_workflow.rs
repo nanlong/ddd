@@ -110,15 +110,12 @@ struct FlakyHandler {
 }
 #[async_trait::async_trait]
 impl EventHandler for FlakyHandler {
-    async fn handle(&self, event: &SerializedEvent) -> DomainResult<()> {
+    async fn handle(&self, event: &SerializedEvent) -> anyhow::Result<()> {
         if event.event_type() == "Bad" {
             let mut g = self.seen.lock().unwrap();
             if !g.contains(event.event_id()) {
                 g.insert(event.event_id().to_string());
-                return Err(DomainError::EventHandler {
-                    handler: "flaky".into(),
-                    reason: "first time fails".into(),
-                });
+                anyhow::bail!("first time fails");
             }
         }
         Ok(())
