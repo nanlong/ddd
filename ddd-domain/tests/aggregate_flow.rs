@@ -9,6 +9,7 @@ use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent, serialize_events,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,7 +52,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![Evt::Deposited {
                     id: ulid::Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 }])
             }
@@ -63,7 +64,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![Evt::Withdrawn {
                     id: ulid::Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 }])
             }
@@ -176,12 +177,12 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     // 使用仓储加载聚合
     let loaded: BankAccount = repo.load(&id).await?.unwrap();
     assert_eq!(loaded.balance, 700);
-    assert_eq!(loaded.version(), 2);
+    assert_eq!(loaded.version(), Version::from_value(2));
 
     // 追加锁定/解锁，确保状态可往返
     let evs = vec![Evt::Locked {
         id: ulid::Ulid::new().to_string(),
-        aggregate_version: 3,
+        aggregate_version: Version::from_value(3),
         reason: "m".into(),
     }];
     let envs: Vec<EventEnvelope<BankAccount>> = evs
@@ -192,6 +193,6 @@ async fn aggregate_persist_and_load_flow() -> AnyResult<()> {
     event_repo.save(ser).await?;
     let loaded2: BankAccount = repo.load(&id).await?.unwrap();
     assert!(loaded2.is_locked);
-    assert_eq!(loaded2.version(), 3);
+    assert_eq!(loaded2.version(), Version::from_value(3));
     Ok(())
 }

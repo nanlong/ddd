@@ -6,14 +6,10 @@ use serde::{Deserialize, Serialize};
 enum BankEvent {
     #[event(event_type = "bank.opened")]
     Opened {
-        id: String,
-        aggregate_version: usize,
         name: String,
     },
     #[event(event_type = "bank.renamed", event_version = 2)]
     Renamed {
-        id: String,
-        aggregate_version: usize,
         to: String,
     },
 }

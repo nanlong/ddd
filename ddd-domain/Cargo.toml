@@ -24,6 +24,7 @@ anyhow = { version = "1.0" }
 async-trait = { version = "0.1" }
 bon = { version = "3.7" }
 chrono = { version = "0.4", features = ["serde"] }
+ddd-macros = { path = "../ddd-macros" }
 futures-core = { version = "0.3", features = ["alloc"], optional = true }
 futures-util = { version = "0.3", optional = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -42,7 +43,6 @@ uuid = { version = "1.11", features = ["serde"] }
 
 [dev-dependencies]
 anyhow = { version = "1.0" }
-ddd-macros = { path = "../ddd-macros" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 ulid = { version = "1.2", features = ["serde"] }
 

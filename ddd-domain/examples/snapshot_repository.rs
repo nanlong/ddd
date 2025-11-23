@@ -13,6 +13,7 @@ use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotRepository, SnapshotRepositoryWithPolicy, deserialize_events, serialize_events,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -114,7 +115,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::ItemAdded {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     product_id,
                     quantity,
                     price,
@@ -133,7 +134,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::ItemRemoved {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     product_id,
                 }])
             }
@@ -145,7 +146,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Confirmed {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     confirmed_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -157,7 +158,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Paid {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     paid_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -169,7 +170,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Shipped {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     shipped_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -181,7 +182,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Delivered {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     delivered_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -193,7 +194,7 @@ impl Aggregate for OrderAggregate {
                 }
                 Ok(vec![OrderEvent::Cancelled {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     cancelled_at: chrono::Utc::now().timestamp(),
                 }])
             }
@@ -468,7 +469,7 @@ where
         }
 
         let envelopes = deserialize_events::<OrderAggregate>(&self.upcaster_chain, serialized)?;
-        let mut order = <OrderAggregate as Entity>::new(aggregate_id.clone(), 0);
+        let mut order = <OrderAggregate as Entity>::new(aggregate_id.clone(), Version::new());
         for envelope in envelopes.iter() {
             order.apply(&envelope.payload);
         }

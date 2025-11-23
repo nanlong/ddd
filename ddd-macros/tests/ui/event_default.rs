@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum UserEvent {
     Created {
-        id: String,
-        aggregate_version: usize,
+        name: String,
     },
 }
 

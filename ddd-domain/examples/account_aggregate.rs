@@ -9,6 +9,7 @@ use ddd_domain::error::{DomainError, DomainResult};
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, serialize_events,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity, entity_id};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -30,7 +31,7 @@ struct Account {
 
 #[derive(Debug)]
 enum AccountCommand {
-    Open { initial_balance: usize },
+    Open { new_balance: usize },
     Deposit { amount: usize },
     Withdraw { amount: usize },
 }
@@ -39,7 +40,7 @@ enum AccountCommand {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum AccountEvent {
     #[event(event_type = "account.opened")]
-    Opened { initial_balance: usize },
+    Opened { new_balance: usize },
     #[event(event_type = "account.deposited")]
     Deposited { amount: usize },
     #[event(event_type = "account.withdrawn")]
@@ -54,34 +55,34 @@ impl Aggregate for Account {
 
     fn execute(&self, command: Self::Command) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
-            AccountCommand::Open { initial_balance } => {
-                if self.version() > 0 {
+            AccountCommand::Open { new_balance } => {
+                if self.version().is_created() {
                     return Err(DomainError::InvalidState {
                         reason: "account already opened".to_string(),
                     });
                 }
                 let evt = AccountEvent::Opened {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
-                    initial_balance,
+                    aggregate_version: self.version().next(),
+                    new_balance,
                 };
                 Ok(vec![evt])
             }
             AccountCommand::Deposit { amount } => {
-                if self.version() == 0 {
+                if self.version().is_new() {
                     return Err(DomainError::InvalidState {
                         reason: "account not opened".to_string(),
                     });
                 }
                 let evt = AccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 };
                 Ok(vec![evt])
             }
             AccountCommand::Withdraw { amount } => {
-                if self.version() == 0 {
+                if self.version().is_new() {
                     return Err(DomainError::InvalidState {
                         reason: "account not opened".to_string(),
                     });
@@ -93,7 +94,7 @@ impl Aggregate for Account {
                 }
                 let evt = AccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 };
                 Ok(vec![evt])
@@ -105,10 +106,10 @@ impl Aggregate for Account {
         match event {
             AccountEvent::Opened {
                 aggregate_version,
-                initial_balance,
+                new_balance,
                 ..
             } => {
-                self.balance = *initial_balance;
+                self.balance = *new_balance;
                 self.version = *aggregate_version;
             }
             AccountEvent::Deposited {
@@ -218,20 +219,21 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
             .collect();
 
         // 乐观锁校验：预期版本 = 当前聚合版本 - 新事件数量
-        let expected_version = aggregate.version().saturating_sub(envelopes.len());
+        let expected_version =
+            Version::from_value(aggregate.version().value().saturating_sub(envelopes.len()));
 
         let actual_version = {
             let states = self.states.lock().unwrap();
             states
                 .get(&aggregate.id().to_string())
                 .map(|a| a.version())
-                .unwrap_or(0)
+                .unwrap_or(Version::new())
         };
 
         if actual_version != expected_version {
             return Err(DomainError::VersionConflict {
-                expected: expected_version,
-                actual: actual_version,
+                expected: expected_version.value(),
+                actual: actual_version.value(),
             });
         }
 
@@ -260,9 +262,7 @@ async fn main() {
     let events = root
         .execute(
             &id,
-            vec![AccountCommand::Open {
-                initial_balance: 1000,
-            }],
+            vec![AccountCommand::Open { new_balance: 1000 }],
             EventContext::default(),
         )
         .await

@@ -10,6 +10,7 @@ use crate::{
     domain_event::{EventContext, EventEnvelope},
     event_upcaster::EventUpcasterChain,
     persist::{EventRepository, SnapshotRepository, deserialize_events, serialize_events},
+    value_object::Version,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -74,10 +75,10 @@ where
     {
         let serialized = self
             .event_repo
-            .get_last_events::<A>(aggregate.id(), aggregate.version())
+            .get_last_events::<A>(aggregate.id(), aggregate.version().value())
             .await?;
 
-        if serialized.is_empty() && aggregate.version() == 0 {
+        if serialized.is_empty() && aggregate.version().is_new() {
             return Ok(None);
         }
 
@@ -104,7 +105,7 @@ where
 {
     async fn load(&self, aggregate_id: &A::Id) -> Result<Option<A>, A::Error> {
         let aggregate = self
-            .replay(A::new(aggregate_id.clone(), 0))
+            .replay(A::new(aggregate_id.clone(), Version::new()))
             .await
             .map_err(A::Error::from)?;
 

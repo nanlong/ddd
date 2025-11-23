@@ -79,7 +79,7 @@ where
     }
 
     async fn save<A: Aggregate>(&self, aggregate: &A) -> Result<()> {
-        if !self.policy.should_snapshot(aggregate.version()) {
+        if !self.policy.should_snapshot(aggregate.version().value()) {
             return Ok(());
         }
 

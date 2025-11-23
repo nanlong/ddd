@@ -49,10 +49,10 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     for v in &mut enum_item.variants {
         match &mut v.fields {
             syn::Fields::Named(fields_named) => {
-                let usize_ty: Type = syn::parse_quote! { usize };
+                let version_ty: Type = syn::parse_quote! { ::ddd_domain::value_object::Version };
                 ensure_required_fields(
                     fields_named,
-                    &[("id", &id_type), ("aggregate_version", &usize_ty)],
+                    &[("id", &id_type), ("aggregate_version", &version_ty)],
                     /*reposition_existing*/ false,
                 );
 
@@ -162,7 +162,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn event_id(&self) -> &str { match self { #( #id_match_arms, )* } }
             fn event_type(&self) -> &str { match self { #( #type_match_arms, )* } }
             fn event_version(&self) -> usize { match self { #( #ver_match_arms, )* } }
-            fn aggregate_version(&self) -> usize { match self { #( #agg_ver_match_arms, )* } }
+            fn aggregate_version(&self) -> ::ddd_domain::value_object::Version { match self { #( #agg_ver_match_arms, )* } }
         }
     };
 

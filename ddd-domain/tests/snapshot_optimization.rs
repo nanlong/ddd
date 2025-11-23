@@ -10,6 +10,7 @@ use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, SerializedSnapshot, SnapshotPolicy,
     SnapshotPolicyRepo, SnapshotRepository, SnapshotRepositoryWithPolicy,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -178,11 +179,11 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
     repo.save(all).await?;
 
     // 保存快照（版本 100）
-    let mut agg = <Counter as Entity>::new(id.clone(), 0);
+    let mut agg = <Counter as Entity>::new(id.clone(), Version::new());
     for v in 1..=100 {
         agg.apply(&CounterEvent::Incr {
             id: ulid::Ulid::new().to_string(),
-            aggregate_version: v,
+            aggregate_version: Version::from_value(v),
             by: 1,
         });
     }
@@ -197,7 +198,7 @@ async fn snapshot_optimization_by_call_count() -> AnyResult<()> {
 
     // 加载（应当仅调用一次 get_last_events，且不调用 get_events）
     let loaded: Counter = store.load(&id).await?.unwrap();
-    assert_eq!(loaded.version(), 105);
+    assert_eq!(loaded.version(), Version::from_value(105));
     assert_eq!(loaded.value, 105);
     assert_eq!(*repo.get_all_calls.lock().unwrap(), 0);
     assert_eq!(*repo.get_last_calls.lock().unwrap(), 1);

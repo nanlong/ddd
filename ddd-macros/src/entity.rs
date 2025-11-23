@@ -8,7 +8,7 @@ use syn::{
 };
 
 /// #[entity] 宏实现
-/// - 若缺失则追加字段：`id: IdType`, `version: usize`，并置于字段最前
+/// - 若缺失则追加字段：`id: IdType`, `version: Version`，并置于字段最前
 /// - 自动实现 `::ddd_domain::entity::Entity`（new/id/version）
 /// - 支持参数：`#[entity(id = IdType, debug = true|false)]`；
 ///   - `id` 默认 `String`
@@ -39,11 +39,11 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let id_type = cfg.id_ty.unwrap_or_else(|| syn::parse_quote! { String });
 
     // 重新组织字段：确保 id/version 在最前，并避免重复
-    let usize_ty: Type = syn::parse_quote! { usize };
+    let version_ty: Type = syn::parse_quote! { ::ddd_domain::value_object::Version };
 
     ensure_required_fields(
         fields_named,
-        &[("id", &id_type), ("version", &usize_ty)],
+        &[("id", &id_type), ("version", &version_ty)],
         /*reposition_existing*/ true,
     );
 
@@ -73,13 +73,13 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics ::ddd_domain::entity::Entity for #ident #ty_generics #where_clause {
             type Id = #id_type;
 
-            fn new(aggregate_id: Self::Id, version: usize) -> Self {
+            fn new(aggregate_id: Self::Id, version: ::ddd_domain::value_object::Version) -> Self {
                 Self { id: aggregate_id, version, ..Default::default() }
             }
 
             fn id(&self) -> &Self::Id { &self.id }
 
-            fn version(&self) -> usize { self.version }
+            fn version(&self) -> ::ddd_domain::value_object::Version { self.version }
         }
     };
 

@@ -2,6 +2,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt;
 
+use crate::value_object::Version;
+
 /// 领域事件载荷需要满足的通用能力边界
 pub trait DomainEvent:
     Clone + PartialEq + fmt::Debug + Serialize + DeserializeOwned + Send + Sync + 'static
@@ -16,5 +18,5 @@ pub trait DomainEvent:
     fn event_version(&self) -> usize;
 
     /// 事件对应的聚合版本（用于并发控制）
-    fn aggregate_version(&self) -> usize;
+    fn aggregate_version(&self) -> Version;
 }

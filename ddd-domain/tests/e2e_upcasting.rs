@@ -10,6 +10,7 @@ use ddd_domain::event_upcaster::{EventUpcaster, EventUpcasterChain, EventUpcaste
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, EventSourcedRepo, SerializedEvent,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -46,8 +47,8 @@ impl Aggregate for Wallet {
             } => {
                 self.currency = currency.clone();
                 self.balance_minor_units += *minor_units;
-                self.version = if *aggregate_version == 0 {
-                    self.version + 1
+                self.version = if aggregate_version.is_new() {
+                    self.version.next()
                 } else {
                     *aggregate_version
                 };
@@ -265,6 +266,6 @@ async fn e2e_upcasting_end_to_end() -> AnyResult<()> {
 
     let agg: Wallet = store.load(&id).await?.unwrap();
     assert_eq!(agg.balance_minor_units, 13000);
-    assert_eq!(agg.version(), 2);
+    assert_eq!(agg.version(), Version::from_value(2));
     Ok(())
 }

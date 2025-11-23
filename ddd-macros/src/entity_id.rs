@@ -6,9 +6,11 @@ use syn::{Item, Result, Token, parse::Parse, parse::ParseStream, parse_macro_inp
 
 /// #[entity_id] 宏实现
 /// 仅支持单字段 tuple struct，并为包装类型：
-/// - 合并/追加派生：Default, Clone, (Debug 可控), Serialize, Deserialize, PartialEq, Eq, Hash
+/// - 合并/追加派生：Default, Clone, Copy, (Debug 可控), Serialize, Deserialize, PartialEq, Eq, Hash
 /// - 提供 new(value)、Display、FromStr、AsRef/AsMut、From 等便捷实现
 /// - 参数：`#[entity_id(debug = true|false)]`，默认 true
+///
+/// **注意**：内部类型必须实现 Copy trait（如 Uuid、u64 等），不支持 String
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cfg = parse_macro_input!(attr as EntityIdAttrConfig);
     let input = parse_macro_input!(item as Item);

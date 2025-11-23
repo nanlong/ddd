@@ -35,6 +35,7 @@ mod tests {
     use crate::domain_event::{DomainEvent, EventContext};
     use crate::entity::Entity;
     use crate::error::DomainError;
+    use crate::value_object::Version;
     use ddd_macros::{domain_event, entity};
     use serde::{Deserialize, Serialize};
 
@@ -73,7 +74,7 @@ mod tests {
                     }
                     Ok(vec![CounterEvent::Added {
                         id: ulid::Ulid::new().to_string(),
-                        aggregate_version: self.version() + 1,
+                        aggregate_version: self.version().next(),
                         amount,
                     }])
                 }
@@ -90,7 +91,7 @@ mod tests {
                     }
                     Ok(vec![CounterEvent::Subtracted {
                         id: ulid::Ulid::new().to_string(),
-                        aggregate_version: self.version() + 1,
+                        aggregate_version: self.version().next(),
                         amount,
                     }])
                 }
@@ -122,9 +123,9 @@ mod tests {
     #[tokio::test]
     async fn aggregate_lifecycle_create_execute_apply_envelope() {
         let id = "c-1".to_string();
-        let agg = Counter::new(id.clone(), 0);
+        let agg = Counter::new(id.clone(), Version::new());
         assert_eq!(agg.id(), &id);
-        assert_eq!(agg.version(), 0);
+        assert_eq!(agg.version(), Version::new());
         assert_eq!(agg.value, 0);
 
         // 执行加法命令 -> 产生事件
@@ -136,7 +137,7 @@ mod tests {
                 amount,
                 ..
             } => {
-                assert_eq!(*aggregate_version, 1);
+                assert_eq!(*aggregate_version, Version::from_value(1));
                 assert_eq!(*amount, 3);
             }
             _ => panic!("unexpected event"),
@@ -147,7 +148,7 @@ mod tests {
         for e in &events {
             agg2.apply(e);
         }
-        assert_eq!(agg2.version(), 1);
+        assert_eq!(agg2.version(), Version::from_value(1));
         assert_eq!(agg2.value, 3);
 
         // 继续执行/应用（按顺序执行并逐步提升版本）
@@ -160,7 +161,7 @@ mod tests {
         for e in &ev3 {
             agg3.apply(e);
         }
-        assert_eq!(agg3.version(), 3);
+        assert_eq!(agg3.version(), Version::from_value(3));
         assert_eq!(agg3.value, 4);
 
         // 事件信封封装（用于持久化前）
@@ -169,18 +170,21 @@ mod tests {
             agg3.id(),
             CounterEvent::Added {
                 id: ulid::Ulid::new().to_string(),
-                aggregate_version: agg3.version() + 1,
+                aggregate_version: agg3.version().next(),
                 amount: 10,
             },
             ctx.clone(),
         )];
         assert_eq!(envelopes.len(), 1);
-        assert_eq!(envelopes[0].payload.aggregate_version(), agg3.version() + 1);
+        assert_eq!(
+            envelopes[0].payload.aggregate_version(),
+            agg3.version().next()
+        );
     }
 
     #[test]
     fn invalid_commands_should_error() {
-        let agg = Counter::new("c-2".to_string(), 0);
+        let agg = Counter::new("c-2".to_string(), Version::new());
         let err = agg.execute(CounterCommand::Sub { amount: 1 }).unwrap_err();
         match err {
             DomainError::InvalidState { .. } => {}

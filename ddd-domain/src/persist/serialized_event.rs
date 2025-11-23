@@ -118,7 +118,7 @@ where
             sequence_number: None,
             aggregate_id: envelope.metadata.aggregate_id().to_string(),
             aggregate_type: envelope.metadata.aggregate_type().to_string(),
-            aggregate_version: envelope.payload.aggregate_version(),
+            aggregate_version: envelope.payload.aggregate_version().value(),
             correlation_id: envelope.context.correlation_id().map(|s| s.to_string()),
             causation_id: envelope.context.causation_id().map(|s| s.to_string()),
             actor_type: envelope.context.actor_type().map(|s| s.to_string()),

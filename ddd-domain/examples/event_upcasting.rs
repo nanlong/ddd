@@ -79,7 +79,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     minor_units,
                     currency,
                 }])
@@ -101,8 +101,8 @@ impl Aggregate for BankAccount {
                 }
                 self.balance_minor_units += minor_units;
                 // 如果事件中的 version 是占位值 0，则自动递增；否则使用事件中的值
-                self.version = if *aggregate_version == 0 {
-                    self.version + 1
+                self.version = if aggregate_version.is_new() {
+                    self.version.next()
                 } else {
                     *aggregate_version
                 };
@@ -115,8 +115,8 @@ impl Aggregate for BankAccount {
                 // 取款：减少余额
                 self.balance_minor_units -= minor_units;
                 // 如果事件中的 version 是占位值 0，则自动递增；否则使用事件中的值
-                self.version = if *aggregate_version == 0 {
-                    self.version + 1
+                self.version = if aggregate_version.is_new() {
+                    self.version.next()
                 } else {
                     *aggregate_version
                 };
@@ -900,7 +900,7 @@ async fn main() -> AnyResult<()> {
     println!("新事件序列化演示:");
     let new_event = BankAccountEvent::Deposited {
         id: Ulid::new().to_string(),
-        aggregate_version: account_after_snapshot.version() + 1,
+        aggregate_version: account_after_snapshot.version().next(),
         minor_units: 2000,
         currency: "CNY".to_string(),
     };

@@ -16,3 +16,4 @@ syn = { version = "2.0", features = ["full"] }
 ddd-domain = { path = "../ddd-domain" }
 serde = { version = "1", features = ["derive"] }
 trybuild = "1.0"
+uuid = { version = "1", features = ["v4"] }

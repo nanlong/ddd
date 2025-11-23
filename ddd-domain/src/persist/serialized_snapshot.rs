@@ -59,7 +59,7 @@ impl SerializedSnapshot {
         Ok(Self {
             aggregate_id: aggregate.id().to_string(),
             aggregate_type: A::TYPE.to_string(),
-            aggregate_version: aggregate.version(),
+            aggregate_version: aggregate.version().value(),
             payload: serde_json::to_value(aggregate)?,
         })
     }

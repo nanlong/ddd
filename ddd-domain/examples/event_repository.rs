@@ -11,6 +11,7 @@ use ddd_domain::event_upcaster::EventUpcasterChain;
 use ddd_domain::persist::{
     AggregateRepository, EventRepository, SerializedEvent, deserialize_events, serialize_events,
 };
+use ddd_domain::value_object::Version;
 use ddd_macros::{domain_event, entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,7 +71,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 }])
             }
@@ -92,7 +93,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     amount,
                 }])
             }
@@ -102,7 +103,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Locked {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     reason: "Manual lock".to_string(),
                 }])
             }
@@ -112,7 +113,7 @@ impl Aggregate for BankAccount {
                 }
                 Ok(vec![BankAccountEvent::Unlocked {
                     id: Ulid::new().to_string(),
-                    aggregate_version: self.version() + 1,
+                    aggregate_version: self.version().next(),
                     reason: "Manual unlock".to_string(),
                 }])
             }
@@ -258,7 +259,7 @@ where
         }
 
         let envelopes = deserialize_events::<BankAccount>(&self.upcaster_chain, serialized)?;
-        let mut account = <BankAccount as Entity>::new(aggregate_id.clone(), 0);
+        let mut account = <BankAccount as Entity>::new(aggregate_id.clone(), Version::new());
         for envelope in envelopes.iter() {
             account.apply(&envelope.payload);
         }

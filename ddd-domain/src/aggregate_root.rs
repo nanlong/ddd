@@ -7,6 +7,7 @@ use crate::{
     aggregate::Aggregate,
     domain_event::{EventContext, EventEnvelope},
     persist::AggregateRepository,
+    value_object::Version,
 };
 use std::marker::PhantomData;
 
@@ -51,7 +52,7 @@ where
         let mut aggregate = self
             .load(aggregate_id)
             .await?
-            .unwrap_or_else(|| A::new(aggregate_id.clone(), 0));
+            .unwrap_or_else(|| A::new(aggregate_id.clone(), Version::new()));
 
         // 执行命令，获取事件
         let events = commands.into_iter().try_fold(Vec::new(), |mut acc, cmd| {
