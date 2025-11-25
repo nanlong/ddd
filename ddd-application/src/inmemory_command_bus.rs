@@ -53,11 +53,7 @@ impl InMemoryCommandBus {
                         Ok(cmd) => handler.handle(ctx, *cmd).await,
                         Err(e) => {
                             let found = type_name_of_val(&e);
-
-                            Err(AppError::TypeMismatch {
-                                expected: type_name::<C>(),
-                                found,
-                            })
+                            Err(AppError::type_mismatch(type_name::<C>(), found))
                         }
                     }
                 })
@@ -65,9 +61,7 @@ impl InMemoryCommandBus {
         };
 
         if self.handlers.contains_key(&key) {
-            return Err(AppError::AlreadyRegisteredCommand {
-                command: type_name::<C>(),
-            });
+            return Err(AppError::handler_already_registered(type_name::<C>()));
         }
 
         self.handlers.insert(key, (type_name::<C>(), f));
@@ -92,7 +86,7 @@ impl InMemoryCommandBus {
         C: Send + 'static,
     {
         let Some((_name, f)) = self.handlers.get(&TypeId::of::<C>()).map(|h| h.clone()) else {
-            return Err(AppError::HandlerNotFound(type_name::<C>()));
+            return Err(AppError::handler_not_found(type_name::<C>()));
         };
 
         (f)(Box::new(cmd), ctx).await
@@ -111,6 +105,7 @@ mod tests {
     use super::*;
     use crate::command_handler::CommandHandler;
     use crate::error::AppError;
+    use ddd_domain::error::ErrorCode;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::task::JoinSet;
 
@@ -147,10 +142,8 @@ mod tests {
         let bus = InMemoryCommandBus::new();
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
-        match err {
-            AppError::HandlerNotFound(name) => assert!(name.contains("Add")),
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), "HANDLER_NOT_FOUND");
+        assert!(err.to_string().contains("Add"));
     }
 
     #[derive(Debug)]
@@ -165,10 +158,7 @@ mod tests {
                 let found = type_name_of_val(&boxed_cmd);
                 let _ = boxed_cmd
                     .downcast::<Wrong>()
-                    .map_err(|_| AppError::TypeMismatch {
-                        expected: type_name::<Wrong>(),
-                        found,
-                    })?;
+                    .map_err(|_| AppError::type_mismatch(type_name::<Wrong>(), found))?;
                 Ok(())
             })
         });
@@ -177,10 +167,8 @@ mod tests {
 
         let ctx = AppContext::default();
         let err = bus.dispatch(&ctx, Add).await.unwrap_err();
-        match err {
-            AppError::TypeMismatch { expected, .. } => assert!(expected.contains("Wrong")),
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), "TYPE_MISMATCH");
+        assert!(err.to_string().contains("Wrong"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

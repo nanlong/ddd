@@ -104,14 +104,10 @@ impl Aggregate for OrderAggregate {
                 price,
             } => {
                 if quantity == 0 {
-                    return Err(DomainError::InvalidCommand {
-                        reason: "quantity must be positive".to_string(),
-                    });
+                    return Err(DomainError::invalid_command("quantity must be positive"));
                 }
                 if self.status != OrderStatus::Draft {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::ItemAdded {
                     id: Ulid::new().to_string(),
@@ -123,14 +119,10 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::RemoveItem { product_id } => {
                 if self.status != OrderStatus::Draft {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 if !self.items.iter().any(|item| item.product_id == product_id) {
-                    return Err(DomainError::NotFound {
-                        reason: "item not found".to_string(),
-                    });
+                    return Err(DomainError::not_found("item not found"));
                 }
                 Ok(vec![OrderEvent::ItemRemoved {
                     id: Ulid::new().to_string(),
@@ -140,9 +132,7 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Confirm => {
                 if self.status != OrderStatus::Draft {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::Confirmed {
                     id: Ulid::new().to_string(),
@@ -152,9 +142,7 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Pay => {
                 if self.status != OrderStatus::Confirmed {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::Paid {
                     id: Ulid::new().to_string(),
@@ -164,9 +152,7 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Ship => {
                 if self.status != OrderStatus::Paid {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::Shipped {
                     id: Ulid::new().to_string(),
@@ -176,9 +162,7 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Deliver => {
                 if self.status != OrderStatus::Shipped {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::Delivered {
                     id: Ulid::new().to_string(),
@@ -188,9 +172,7 @@ impl Aggregate for OrderAggregate {
             }
             OrderCommand::Cancel => {
                 if matches!(self.status, OrderStatus::Delivered | OrderStatus::Cancelled) {
-                    return Err(DomainError::InvalidState {
-                        reason: "invalid order status".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("invalid order status"));
                 }
                 Ok(vec![OrderEvent::Cancelled {
                     id: Ulid::new().to_string(),

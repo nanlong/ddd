@@ -46,9 +46,7 @@ impl Aggregate for BankAccount {
         match command {
             Cmd::Deposit { amount } => {
                 if amount <= 0 || self.is_locked {
-                    return Err(DomainError::InvalidCommand {
-                        reason: "bad".into(),
-                    });
+                    return Err(DomainError::invalid_command("bad"));
                 }
                 Ok(vec![Evt::Deposited {
                     id: ulid::Ulid::new().to_string(),
@@ -58,9 +56,7 @@ impl Aggregate for BankAccount {
             }
             Cmd::Withdraw { amount } => {
                 if amount <= 0 || self.is_locked || self.balance < amount {
-                    return Err(DomainError::InvalidState {
-                        reason: "bad".into(),
-                    });
+                    return Err(DomainError::invalid_state("bad"));
                 }
                 Ok(vec![Evt::Withdrawn {
                     id: ulid::Ulid::new().to_string(),

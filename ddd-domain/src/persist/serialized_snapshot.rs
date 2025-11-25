@@ -41,10 +41,10 @@ impl SerializedSnapshot {
         A: Aggregate,
     {
         if A::TYPE != self.aggregate_type {
-            return Err(DomainError::TypeMismatch {
-                expected: A::TYPE.to_string(),
-                found: self.aggregate_type.clone(),
-            });
+            return Err(DomainError::type_mismatch(
+                A::TYPE,
+                self.aggregate_type.as_str(),
+            ));
         }
 
         let aggregate = serde_json::from_value(self.payload.clone())?;

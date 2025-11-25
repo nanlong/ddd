@@ -57,9 +57,7 @@ impl Aggregate for Account {
         match command {
             AccountCommand::Open { new_balance } => {
                 if self.version().is_created() {
-                    return Err(DomainError::InvalidState {
-                        reason: "account already opened".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("account already opened"));
                 }
                 let evt = AccountEvent::Opened {
                     id: Ulid::new().to_string(),
@@ -70,9 +68,7 @@ impl Aggregate for Account {
             }
             AccountCommand::Deposit { amount } => {
                 if self.version().is_new() {
-                    return Err(DomainError::InvalidState {
-                        reason: "account not opened".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("account not opened"));
                 }
                 let evt = AccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -83,14 +79,10 @@ impl Aggregate for Account {
             }
             AccountCommand::Withdraw { amount } => {
                 if self.version().is_new() {
-                    return Err(DomainError::InvalidState {
-                        reason: "account not opened".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("account not opened"));
                 }
                 if self.balance < amount {
-                    return Err(DomainError::InvalidState {
-                        reason: "insufficient funds".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("insufficient funds"));
                 }
                 let evt = AccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),
@@ -227,14 +219,14 @@ impl AggregateRepository<Account> for InMemoryAccountRepo {
             states
                 .get(&aggregate.id().to_string())
                 .map(|a| a.version())
-                .unwrap_or(Version::new())
+                .unwrap_or_default()
         };
 
         if actual_version != expected_version {
-            return Err(DomainError::VersionConflict {
-                expected: expected_version.value(),
-                actual: actual_version.value(),
-            });
+            return Err(DomainError::conflict(
+                expected_version.value(),
+                actual_version.value(),
+            ));
         }
 
         // 事件持久化（依赖事件仓储）

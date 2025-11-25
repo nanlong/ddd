@@ -73,9 +73,7 @@ impl Aggregate for BankAccount {
                 currency,
             } => {
                 if minor_units <= 0 {
-                    return Err(DomainError::InvalidCommand {
-                        reason: "amount must be positive".to_string(),
-                    });
+                    return Err(DomainError::invalid_command("amount must be positive"));
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -142,11 +140,13 @@ impl EventUpcaster for AccountCreditedV1ToV2 {
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountCreditedV1ToV2"),
-                reason: "v1 missing amount".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountCreditedV1ToV2"),
+                    "v1 missing amount",
+                )
             })?;
 
         println!(
@@ -201,11 +201,13 @@ impl EventUpcaster for AccountCreditedV2ToV3 {
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountCreditedV2ToV3"),
-                reason: "v2 missing amount".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountCreditedV2ToV3"),
+                    "v2 missing amount",
+                )
             })?;
         let currency = payload
             .get("currency")
@@ -267,20 +269,24 @@ impl EventUpcaster for AccountCreditedV3ToV4 {
         let minor_units = payload
             .get("minor_units")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountCreditedV3ToV4"),
-                reason: "v3 missing minor_units".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountCreditedV3ToV4"),
+                    "v3 missing minor_units",
+                )
             })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountCreditedV3ToV4"),
-                reason: "v3 missing currency".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountCreditedV3ToV4"),
+                    "v3 missing currency",
+                )
             })?;
 
         println!(
@@ -343,11 +349,13 @@ impl EventUpcaster for AccountDebitedV1ToV2 {
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountDebitedV1ToV2"),
-                reason: "v1 missing amount".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountDebitedV1ToV2"),
+                    "v1 missing amount",
+                )
             })?;
 
         println!(
@@ -401,11 +409,13 @@ impl EventUpcaster for AccountDebitedV2ToV3 {
         let amount = payload
             .get("amount")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountDebitedV2ToV3"),
-                reason: "v2 missing amount".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountDebitedV2ToV3"),
+                    "v2 missing amount",
+                )
             })?;
         let currency = payload
             .get("currency")
@@ -466,20 +476,24 @@ impl EventUpcaster for AccountDebitedV3ToV4 {
         let minor_units = payload
             .get("minor_units")
             .and_then(|v| v.as_i64())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountDebitedV3ToV4"),
-                reason: "v3 missing minor_units".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountDebitedV3ToV4"),
+                    "v3 missing minor_units",
+                )
             })?;
         let currency = payload
             .get("currency")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AccountDebitedV3ToV4"),
-                reason: "v3 missing currency".to_string(),
+            .ok_or_else(|| {
+                DomainError::upcast_failed(
+                    event.event_type(),
+                    event.event_version(),
+                    Some("AccountDebitedV3ToV4"),
+                    "v3 missing currency",
+                )
             })?;
 
         println!(

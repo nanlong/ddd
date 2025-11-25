@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name: String,
     }
 
-    if let Err(AppError::HandlerNotFound(name)) = bus
+    let result = bus
         .dispatch(
             &ctx,
             UpdateUser {
@@ -77,9 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 name: "Eve".into(),
             },
         )
-        .await
-    {
-        eprintln!("HandlerNotFound as expected for command: {}", name);
+        .await;
+
+    if let Err(e) = result {
+        use ddd_domain::error::ErrorCode;
+        if e.code() == "HANDLER_NOT_FOUND" {
+            eprintln!("HandlerNotFound as expected for command: {}", e);
+        }
     }
 
     eprintln!("Registered Commands: {:?}", bus.registered_commands());

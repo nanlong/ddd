@@ -40,11 +40,8 @@ impl EventBus for InMemoryEventBus {
 
     async fn subscribe(&self) -> BoxStream<'static, Result<SerializedEvent>> {
         let rx = self.tx.subscribe();
-        let stream = BroadcastStream::new(rx).map(|r| {
-            r.map_err(|e| DomainError::EventBus {
-                reason: e.to_string(),
-            })
-        });
+        let stream =
+            BroadcastStream::new(rx).map(|r| r.map_err(|e| DomainError::event_bus(e.to_string())));
         Box::pin(stream)
     }
 }

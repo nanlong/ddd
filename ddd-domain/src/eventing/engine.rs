@@ -367,11 +367,10 @@ mod tests {
         }
         async fn subscribe(&self) -> BoxStream<'static, DomainResult<SerializedEvent>> {
             let rx = self.tx.subscribe();
-            Box::pin(BroadcastStream::new(rx).map(|r| {
-                r.map_err(|e| DomainError::EventBus {
-                    reason: e.to_string(),
-                })
-            }))
+            Box::pin(
+                BroadcastStream::new(rx)
+                    .map(|r| r.map_err(|e| DomainError::event_bus(e.to_string()))),
+            )
         }
     }
 

@@ -60,14 +60,10 @@ impl Aggregate for BankAccount {
         match command {
             BankAccountCommand::Deposit { amount } => {
                 if amount <= 0 {
-                    return Err(DomainError::InvalidCommand {
-                        reason: "amount must be positive".to_string(),
-                    });
+                    return Err(DomainError::invalid_command("amount must be positive"));
                 }
                 if self.is_locked {
-                    return Err(DomainError::InvalidState {
-                        reason: "account is locked".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("account is locked"));
                 }
                 Ok(vec![BankAccountEvent::Deposited {
                     id: Ulid::new().to_string(),
@@ -77,19 +73,13 @@ impl Aggregate for BankAccount {
             }
             BankAccountCommand::Withdraw { amount } => {
                 if amount <= 0 {
-                    return Err(DomainError::InvalidCommand {
-                        reason: "amount must be positive".to_string(),
-                    });
+                    return Err(DomainError::invalid_command("amount must be positive"));
                 }
                 if self.is_locked {
-                    return Err(DomainError::InvalidState {
-                        reason: "account is locked".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("account is locked"));
                 }
                 if self.balance < amount {
-                    return Err(DomainError::InvalidState {
-                        reason: "insufficient balance".to_string(),
-                    });
+                    return Err(DomainError::invalid_state("insufficient balance"));
                 }
                 Ok(vec![BankAccountEvent::Withdrawn {
                     id: Ulid::new().to_string(),

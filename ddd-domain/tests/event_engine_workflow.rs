@@ -34,11 +34,10 @@ impl EventBus for Bus {
         Ok(())
     }
     async fn subscribe(&self) -> BoxStream<'static, DomainResult<SerializedEvent>> {
-        Box::pin(BroadcastStream::new(self.tx.subscribe()).map(|r| {
-            r.map_err(|e| DomainError::EventBus {
-                reason: e.to_string(),
-            })
-        }))
+        Box::pin(
+            BroadcastStream::new(self.tx.subscribe())
+                .map(|r| r.map_err(|e| DomainError::event_bus(e.to_string()))),
+        )
     }
 }
 

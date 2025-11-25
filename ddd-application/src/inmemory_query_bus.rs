@@ -58,20 +58,21 @@ impl InMemoryQueryBus {
                             let dto_opt = handler.handle(ctx, *q).await?;
                             Ok(Box::new(dto_opt) as BoxAnySend)
                         }
-                        Err(e) => Err(AppError::TypeMismatch {
-                            expected: type_name::<Q>(),
-                            found: type_name_of_val(&e),
-                        }),
+                        Err(e) => Err(AppError::type_mismatch(
+                            type_name::<Q>(),
+                            type_name_of_val(&e),
+                        )),
                     }
                 })
             })
         };
 
         if self.handlers.contains_key(&key) {
-            return Err(AppError::AlreadyRegisteredQuery {
-                query: type_name::<Q>(),
-                result: type_name::<R>(),
-            });
+            return Err(AppError::handler_already_registered(&format!(
+                "{}->{}",
+                type_name::<Q>(),
+                type_name::<R>()
+            )));
         }
 
         self.handlers.insert(key, (type_name::<Q>(), f));
@@ -99,17 +100,17 @@ impl InMemoryQueryBus {
     {
         let key = (TypeId::of::<Q>(), TypeId::of::<R>());
         let Some((_name, f)) = self.handlers.get(&key).map(|h| h.clone()) else {
-            return Err(AppError::HandlerNotFound(type_name::<Q>()));
+            return Err(AppError::handler_not_found(type_name::<Q>()));
         };
 
         let out = (f)(Box::new(q), ctx).await?;
 
         match out.downcast::<R>() {
             Ok(dto_opt) => Ok(*dto_opt),
-            Err(e) => Err(AppError::TypeMismatch {
-                expected: type_name::<R>(),
-                found: type_name_of_val(&e),
-            }),
+            Err(e) => Err(AppError::type_mismatch(
+                type_name::<R>(),
+                type_name_of_val(&e),
+            )),
         }
     }
 }
@@ -126,6 +127,7 @@ mod tests {
     use super::*;
     use crate::error::AppError;
     use crate::query_handler::QueryHandler;
+    use ddd_domain::error::ErrorCode;
     use serde::Serialize;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::task::JoinSet;
@@ -167,10 +169,8 @@ mod tests {
         let bus = InMemoryQueryBus::new();
         let ctx = AppContext::default();
         let err = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap_err();
-        match err {
-            AppError::HandlerNotFound(name) => assert!(name.contains("Get")),
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), "HANDLER_NOT_FOUND");
+        assert!(err.to_string().contains("Get"));
     }
 
     #[derive(Debug, Serialize)]
@@ -190,10 +190,8 @@ mod tests {
 
         let ctx = AppContext::default();
         let err = bus.dispatch::<Get, NumDto>(&ctx, Get).await.unwrap_err();
-        match err {
-            AppError::TypeMismatch { expected, .. } => assert!(expected.contains("NumDto")),
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), "TYPE_MISMATCH");
+        assert!(err.to_string().contains("NumDto"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

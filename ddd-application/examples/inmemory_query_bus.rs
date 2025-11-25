@@ -84,10 +84,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[derive(Debug)]
     struct GetOrders;
 
-    if let Err(ddd_application::error::AppError::HandlerNotFound(name)) =
-        bus.dispatch::<GetOrders, UsersDto>(&ctx, GetOrders).await
-    {
-        eprintln!("HandlerNotFound as expected for query: {}", name);
+    if let Err(e) = bus.dispatch::<GetOrders, UsersDto>(&ctx, GetOrders).await {
+        use ddd_domain::error::ErrorCode;
+        if e.code() == "HANDLER_NOT_FOUND" {
+            eprintln!("HandlerNotFound as expected for query: {}", e);
+        }
     }
 
     eprintln!("Registered Queries: {:?}", bus.registered_queries());

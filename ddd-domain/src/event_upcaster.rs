@@ -293,25 +293,25 @@ mod tests {
             true
         }
         fn upcast(&self, event: SerializedEvent) -> DomainResult<EventUpcasterResult> {
-            Err(DomainError::UpcastFailed {
-                event_type: event.event_type().to_string(),
-                from_version: event.event_version(),
-                stage: Some("AlwaysFail"),
-                reason: "boom".into(),
-            })
+            Err(DomainError::upcast_failed(
+                event.event_type(),
+                event.event_version(),
+                Some("AlwaysFail"),
+                "boom",
+            ))
         }
     }
 
     #[test]
     fn upcast_failure_returns_error() {
+        use crate::error::{ErrorCode, ErrorKind};
+
         let chain: EventUpcasterChain = vec![Arc::new(AlwaysFail) as Arc<dyn EventUpcaster>]
             .into_iter()
             .collect();
         let input = vec![mk_event("noop", 1, serde_json::json!({}))];
         let err = chain.upcast_all(input).unwrap_err();
-        match err {
-            DomainError::UpcastFailed { .. } => {}
-            other => panic!("unexpected {other:?}"),
-        }
+        assert_eq!(err.kind(), ErrorKind::Internal);
+        assert_eq!(err.code(), "UPCAST_FAILED");
     }
 }

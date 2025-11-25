@@ -68,9 +68,7 @@ mod tests {
             match command {
                 CounterCommand::Add { amount } => {
                     if amount <= 0 {
-                        return Err(DomainError::InvalidCommand {
-                            reason: "amount must be > 0".into(),
-                        });
+                        return Err(DomainError::invalid_command("amount must be > 0"));
                     }
                     Ok(vec![CounterEvent::Added {
                         id: ulid::Ulid::new().to_string(),
@@ -80,14 +78,10 @@ mod tests {
                 }
                 CounterCommand::Sub { amount } => {
                     if amount <= 0 {
-                        return Err(DomainError::InvalidCommand {
-                            reason: "amount must be > 0".into(),
-                        });
+                        return Err(DomainError::invalid_command("amount must be > 0"));
                     }
                     if self.value < amount {
-                        return Err(DomainError::InvalidState {
-                            reason: "insufficient".into(),
-                        });
+                        return Err(DomainError::invalid_state("insufficient"));
                     }
                     Ok(vec![CounterEvent::Subtracted {
                         id: ulid::Ulid::new().to_string(),
@@ -185,16 +179,12 @@ mod tests {
     #[test]
     fn invalid_commands_should_error() {
         let agg = Counter::new("c-2".to_string(), Version::new());
+        use crate::error::ErrorKind;
+
         let err = agg.execute(CounterCommand::Sub { amount: 1 }).unwrap_err();
-        match err {
-            DomainError::InvalidState { .. } => {}
-            other => panic!("unexpected {other:?}"),
-        }
+        assert_eq!(err.kind(), ErrorKind::InvalidState);
 
         let err = agg.execute(CounterCommand::Add { amount: 0 }).unwrap_err();
-        match err {
-            DomainError::InvalidCommand { .. } => {}
-            other => panic!("unexpected {other:?}"),
-        }
+        assert_eq!(err.kind(), ErrorKind::InvalidCommand);
     }
 }
