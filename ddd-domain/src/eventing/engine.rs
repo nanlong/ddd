@@ -48,30 +48,53 @@ impl<S: BuilderState> EventEngineBuilder<S> {
 
 impl EventEngine {
     /// 启动事件引擎，返回可用于关闭/等待的句柄
+    ///
+    /// 启动顺序：先启动 subscribe worker 并等待其完成订阅，
+    /// 然后再启动 deliver/reclaim worker，避免事件丢失。
     pub fn start(self: Arc<Self>) -> EngineHandle {
         let token = CancellationToken::new();
         let mut tasks: Vec<JoinHandle<()>> = Vec::with_capacity(3);
 
-        // deliver worker（周期任务）
+        // 使用 oneshot channel 同步订阅完成
+        let (subscribe_ready_tx, subscribe_ready_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // 1. 先启动 subscribe worker（长循环），等待订阅完成后再启动其他 worker
+        tasks.push(tokio::spawn(Self::subscribe_loop_with_ready_signal(
+            self.clone(),
+            token.clone(),
+            subscribe_ready_tx,
+        )));
+
+        // 2. 启动 deliver worker（周期任务），等待订阅完成
         {
             let bus = self.event_bus.clone();
             let deliverer = self.event_deliverer.clone();
             let marker = DelivererMarker::new(deliverer.clone());
             let interval = self.config.deliver_interval;
 
-            tasks.push(Self::spawn_periodic(token.clone(), interval, move || {
-                let bus = bus.clone();
-                let deliverer = deliverer.clone();
-                let marker = marker.clone();
-                async move {
-                    if let Ok(events) = deliverer.fetch_events().await {
-                        Self::publish_and_mark(&bus, &marker, events).await;
+            tasks.push(Self::spawn_periodic_after_ready(
+                token.clone(),
+                interval,
+                subscribe_ready_rx,
+                move || {
+                    let bus = bus.clone();
+                    let deliverer = deliverer.clone();
+                    let marker = marker.clone();
+                    async move {
+                        match deliverer.fetch_events().await {
+                            Ok(events) => {
+                                Self::publish_and_mark(&bus, &marker, events).await;
+                            }
+                            Err(_) => {
+                                // 拉取事件失败，稍后重试
+                            }
+                        }
                     }
-                }
-            }));
+                },
+            ));
         }
 
-        // reclaim worker（周期任务）
+        // 3. 启动 reclaim worker（周期任务）
         {
             let bus = self.event_bus.clone();
             let reclaimer = self.event_reclaimer.clone();
@@ -90,12 +113,6 @@ impl EventEngine {
             }));
         }
 
-        // subscribe worker（长循环）
-        tasks.push(tokio::spawn(Self::subscribe_loop(
-            self.clone(),
-            token.clone(),
-        )));
-
         EngineHandle { token, tasks }
     }
 
@@ -109,6 +126,41 @@ impl EventEngine {
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
         tokio::spawn(async move {
+            let mut ticker = time::interval(interval);
+            ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => break,
+                    _ = ticker.tick() => f().await,
+                }
+            }
+        })
+    }
+
+    /// 等待 ready 信号后再开始周期任务
+    fn spawn_periodic_after_ready<F, Fut>(
+        token: CancellationToken,
+        interval: Duration,
+        ready_rx: tokio::sync::oneshot::Receiver<()>,
+        mut f: F,
+    ) -> JoinHandle<()>
+    where
+        F: FnMut() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(async move {
+            // 等待订阅完成信号（或被取消）
+            tokio::select! {
+                _ = token.cancelled() => return,
+                result = ready_rx => {
+                    if result.is_err() {
+                        // sender 已 drop，说明订阅 worker 异常退出
+                        return;
+                    }
+                }
+            }
+
             let mut ticker = time::interval(interval);
             ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -151,11 +203,21 @@ impl EventEngine {
         }
     }
 
-    async fn subscribe_loop(self: Arc<Self>, token: CancellationToken) {
+    /// 带 ready 信号的订阅循环
+    ///
+    /// 在完成订阅后发送 ready 信号，通知 deliver worker 可以开始投递事件
+    async fn subscribe_loop_with_ready_signal(
+        self: Arc<Self>,
+        token: CancellationToken,
+        ready_tx: tokio::sync::oneshot::Sender<()>,
+    ) {
         let mut stream = self.event_bus.subscribe().await;
         let registry = self.registry.clone();
         let concurrency = self.config.handler_concurrency;
         let reclaimer = self.event_reclaimer.clone();
+
+        // 订阅完成，发送 ready 信号
+        let _ = ready_tx.send(());
 
         loop {
             tokio::select! {
@@ -187,7 +249,9 @@ impl EventEngine {
                         None => {
                             break;
                         }
-                        _ => { /* 忽略错误，继续处理下一个事件 */ }
+                        Some(Err(_)) => {
+                            // 事件流错误，继续处理下一个
+                        }
                     }
                 }
             }
