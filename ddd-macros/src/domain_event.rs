@@ -9,8 +9,9 @@ use syn::{
 };
 
 /// #[domain_event] 宏实现
-/// - 仅支持具名字段变体：`Variant { .. }`
-/// - 确保每个变体具备字段：`id: IdType`, `aggregate_version: usize`
+/// - 支持三种变体类型：命名字段 `Variant { .. }`、单元 `Variant`、元组 `Variant(T)`
+/// - 单元变体和元组变体自动转换为命名字段变体
+/// - 确保每个变体具备字段：`id: IdType`, `aggregate_version: Version`
 /// - 生成 `::ddd_domain::domain_event::DomainEvent` 实现（event_id/type/version/aggregate_version）
 /// - 支持：`#[event(id = IdType, version = N)]`（枚举级默认值）
 /// - 变体可覆写：`#[event(event_type = "...", event_version = N)]`
@@ -47,6 +48,58 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut variant_versions: HashMap<String, syn::LitInt> = HashMap::new();
 
     for v in &mut enum_item.variants {
+        // 先处理变体属性（所有变体类型通用）
+        let mut retained_attrs = Vec::new();
+        let mut type_lit: Option<syn::LitStr> = None;
+        let mut version_lit_local: Option<syn::LitInt> = None;
+
+        for attr in v.attrs.iter() {
+            if attr.path().is_ident("event") {
+                match parse_variant_event_attr(attr) {
+                    Ok(vc) => {
+                        if let Some(lit) = vc.ty {
+                            if type_lit.is_some() {
+                                return syn::Error::new(
+                                    attr.span(),
+                                    "duplicate 'event_type' specified for this variant",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                            type_lit = Some(lit);
+                        }
+                        if let Some(lit) = vc.version {
+                            if version_lit_local.is_some() {
+                                return syn::Error::new(
+                                    attr.span(),
+                                    "duplicate 'event_version' specified for this variant",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                            version_lit_local = Some(lit);
+                        }
+                    }
+                    Err(err) => {
+                        return err.to_compile_error().into();
+                    }
+                }
+            } else if attr.path().is_ident("event_type") || attr.path().is_ident("event_version") {
+                return syn::Error::new(attr.span(), "legacy #[event_type]/#[event_version] syntax is no longer supported; use #[event(event_type = ..., event_version = ...)]").to_compile_error().into();
+            } else {
+                retained_attrs.push(attr.clone());
+            }
+        }
+
+        v.attrs = retained_attrs;
+        if let Some(lit) = type_lit {
+            variant_types.insert(v.ident.to_string(), lit);
+        }
+        if let Some(lit) = version_lit_local {
+            variant_versions.insert(v.ident.to_string(), lit);
+        }
+
+        // 处理字段转换
         match &mut v.fields {
             syn::Fields::Named(fields_named) => {
                 let version_ty: Type = syn::parse_quote! { ::ddd_domain::value_object::Version };
@@ -55,66 +108,14 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
                     &[("id", &id_type), ("aggregate_version", &version_ty)],
                     /*reposition_existing*/ false,
                 );
-
-                let mut retained_attrs = Vec::new();
-                let mut type_lit: Option<syn::LitStr> = None;
-                let mut version_lit_local: Option<syn::LitInt> = None;
-
-                for attr in v.attrs.iter() {
-                    if attr.path().is_ident("event") {
-                        match parse_variant_event_attr(attr) {
-                            Ok(vc) => {
-                                if let Some(lit) = vc.ty {
-                                    if type_lit.is_some() {
-                                        return syn::Error::new(
-                                            attr.span(),
-                                            "duplicate 'event_type' specified for this variant",
-                                        )
-                                        .to_compile_error()
-                                        .into();
-                                    }
-                                    type_lit = Some(lit);
-                                }
-                                if let Some(lit) = vc.version {
-                                    if version_lit_local.is_some() {
-                                        return syn::Error::new(
-                                            attr.span(),
-                                            "duplicate 'event_version' specified for this variant",
-                                        )
-                                        .to_compile_error()
-                                        .into();
-                                    }
-                                    version_lit_local = Some(lit);
-                                }
-                            }
-                            Err(err) => {
-                                return err.to_compile_error().into();
-                            }
-                        }
-                    } else if attr.path().is_ident("event_type")
-                        || attr.path().is_ident("event_version")
-                    {
-                        return syn::Error::new(attr.span(), "legacy #[event_type]/#[event_version] syntax is no longer supported; use #[event(event_type = ..., event_version = ...)]").to_compile_error().into();
-                    } else {
-                        retained_attrs.push(attr.clone());
-                    }
-                }
-
-                v.attrs = retained_attrs;
-                if let Some(lit) = type_lit {
-                    variant_types.insert(v.ident.to_string(), lit);
-                }
-                if let Some(lit) = version_lit_local {
-                    variant_versions.insert(v.ident.to_string(), lit);
-                }
             }
-            _ => {
-                return syn::Error::new(
-                    v.span(),
-                    "#[domain_event] supports only named-field enum variants, e.g., Variant { x: T }",
-                )
-                .to_compile_error()
-                .into();
+            syn::Fields::Unit => {
+                // 单元变体转换为命名字段变体: Variant => Variant { id, aggregate_version }
+                v.fields = syn::Fields::Named(create_required_fields_only(&id_type));
+            }
+            syn::Fields::Unnamed(fields_unnamed) => {
+                // 元组变体转换为命名字段变体: Variant(T) => Variant { value: T, id, aggregate_version }
+                v.fields = syn::Fields::Named(convert_tuple_to_named(fields_unnamed, &id_type));
             }
         }
     }
@@ -257,6 +258,75 @@ impl Parse for VariantEventAttrKv {
             eq: input.parse()?,
             value: input.parse()?,
         })
+    }
+}
+
+/// 创建只包含 id 和 aggregate_version 的命名字段集（用于单元变体转换）
+fn create_required_fields_only(id_type: &Type) -> syn::FieldsNamed {
+    let version_ty: Type = syn::parse_quote! { ::ddd_domain::value_object::Version };
+    syn::parse_quote! {
+        {
+            id: #id_type,
+            aggregate_version: #version_ty
+        }
+    }
+}
+
+/// 将元组变体字段转换为命名字段，并添加必需字段
+/// - 单字段: `Variant(T)` => `Variant { value: T, id, aggregate_version }`
+/// - 多字段: `Variant(T, U)` => `Variant { value_0: T, value_1: U, id, aggregate_version }`
+fn convert_tuple_to_named(fields_unnamed: &syn::FieldsUnnamed, id_type: &Type) -> syn::FieldsNamed {
+    let version_ty: Type = syn::parse_quote! { ::ddd_domain::value_object::Version };
+    let unnamed_fields = &fields_unnamed.unnamed;
+
+    let named_fields: Vec<syn::Field> = if unnamed_fields.len() == 1 {
+        // 单字段：使用 value 作为字段名
+        let field = &unnamed_fields[0];
+        let ty = &field.ty;
+        vec![syn::Field {
+            attrs: field.attrs.clone(),
+            vis: field.vis.clone(),
+            mutability: syn::FieldMutability::None,
+            ident: Some(syn::Ident::new("value", proc_macro2::Span::call_site())),
+            colon_token: Some(Default::default()),
+            ty: ty.clone(),
+        }]
+    } else {
+        // 多字段：使用 value_0, value_1, ... 作为字段名
+        unnamed_fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                let ty = &field.ty;
+                syn::Field {
+                    attrs: field.attrs.clone(),
+                    vis: field.vis.clone(),
+                    mutability: syn::FieldMutability::None,
+                    ident: Some(syn::Ident::new(
+                        &format!("value_{}", i),
+                        proc_macro2::Span::call_site(),
+                    )),
+                    colon_token: Some(Default::default()),
+                    ty: ty.clone(),
+                }
+            })
+            .collect()
+    };
+
+    // 添加必需字段
+    let id_field: syn::Field = syn::parse_quote! { id: #id_type };
+    let version_field: syn::Field = syn::parse_quote! { aggregate_version: #version_ty };
+
+    let mut all_fields: Punctuated<syn::Field, Token![,]> = Punctuated::new();
+    for f in named_fields {
+        all_fields.push(f);
+    }
+    all_fields.push(id_field);
+    all_fields.push(version_field);
+
+    syn::FieldsNamed {
+        brace_token: Default::default(),
+        named: all_fields,
     }
 }
 

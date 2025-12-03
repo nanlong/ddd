@@ -43,4 +43,9 @@ impl EventContext {
     pub fn extensions(&self) -> Option<&serde_json::Value> {
         self.extensions.as_ref()
     }
+
+    pub fn set_actor(&mut self, actor_type: impl Into<String>, actor_id: impl Into<String>) {
+        self.actor_type = Some(actor_type.into());
+        self.actor_id = Some(actor_id.into());
+    }
 }
